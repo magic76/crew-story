@@ -311,17 +311,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         playPauseBtn.setLayoutParams(pLp);
         playPauseBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (liveClient != null) {
-                    if (liveClient.isPaused()) {
-                        liveClient.resume();
-                        playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "⏸️ 暫停說書", "⏸️ Pause"));
-                        ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.AMBER_400);
-                    } else {
-                        liveClient.pause();
-                        playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "▶️ 繼續播放", "▶️ Resume"));
-                        ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.EMERALD_400);
-                    }
-                }
+                handlePlayPauseClick();
             }
         });
         controls.addView(playPauseBtn);
@@ -392,6 +382,38 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         return I18n.t(this, "生動說書", "Storytelling");
     }
 
+    private void handlePlayPauseClick() {
+        if (liveClient != null) {
+            if (liveClient.isPaused()) {
+                liveClient.resume();
+                playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "⏸️ 暫停說書", "⏸️ Pause"));
+                ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.AMBER_400);
+            } else {
+                liveClient.pause();
+                playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "▶️ 繼續播放", "▶️ Resume"));
+                ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.EMERALD_400);
+            }
+        }
+    }
+
+    private void restartStorySession(int startPage) {
+        currentPage = startPage;
+        updatePageDisplay(startPage);
+        if (liveClient != null) {
+            liveClient.stop();
+            liveClient = null;
+        }
+        liveClient = new StoryLiveClient(this, story, startPage, this);
+        liveClient.start();
+        playPauseBtn.setText(I18n.t(this, "⏸️ 暫停說書", "⏸️ Pause"));
+        ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.AMBER_400);
+        playPauseBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                handlePlayPauseClick();
+            }
+        });
+    }
+
     @Override
     public void onConnected() {
         statusBadge.setText(I18n.t(this, "● 說書人已就緒", "● Storyteller Ready"));
@@ -421,12 +443,10 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         statusBadge.setText(I18n.t(this, "🎉 故事全篇圓滿結束！", "🎉 Story Completed!"));
         statusBadge.setTextColor(CrewTheme.AMBER_400);
         playPauseBtn.setText(I18n.t(this, "🔄 重新聆聽", "🔄 Replay"));
+        ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.EMERALD_400);
         playPauseBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (liveClient != null) {
-                    liveClient.jumpToPage(0);
-                    playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "⏸️ 暫停說書", "⏸️ Pause"));
-                }
+                restartStorySession(0);
             }
         });
     }

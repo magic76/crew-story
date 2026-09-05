@@ -185,9 +185,11 @@ public class StoryLiveClient {
         return "Puck";
     }
 
+    private int currentTurnSequence = 0;
     private volatile String pendingToolCallId = null;
     private volatile String pendingToolName = null;
     private volatile JSONObject pendingToolArgs = null;
+    private volatile int pendingToolSeq = 0;
     private volatile long scheduledPlayEndTimeMs = 0;
 
     private String buildSetup() throws Exception {
@@ -315,12 +317,13 @@ public class StoryLiveClient {
                 JSONArray functionCalls = toolCall.optJSONArray("functionCalls");
                 if (functionCalls == null) functionCalls = toolCall.optJSONArray("function_calls");
                 if (functionCalls != null && functionCalls.length() > 0) {
+                    final int seq = currentTurnSequence;
                     for (int i = 0; i < functionCalls.length(); i++) {
                         JSONObject fc = functionCalls.getJSONObject(i);
                         String id = fc.optString("id", "call_0");
                         String name = fc.optString("name", "");
                         JSONObject args = fc.optJSONObject("args");
-                        handleAgentToolCall(id, name, args);
+                        handleAgentToolCall(id, name, args, seq);
                     }
                 }
             }
@@ -330,23 +333,35 @@ public class StoryLiveClient {
         }
     }
 
-    private synchronized void handleAgentToolCall(String callId, String name, JSONObject args) {
+    private synchronized void handleAgentToolCall(String callId, String name, JSONObject args, final int seq) {
+        if (seq != currentTurnSequence || !running || isPaused) return;
         // Hold the tool call until all queued audio finishes playing physically through speaker!
         pendingToolCallId = callId;
         pendingToolName = name;
         pendingToolArgs = args;
+        pendingToolSeq = seq;
 
         long now = System.currentTimeMillis();
         long remaining = Math.max(0, scheduledPlayEndTimeMs - now);
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() {
-                checkAndExecutePendingTool();
+                checkAndExecutePendingTool(seq);
             }
         }, Math.max(60, remaining + 60));
     }
 
     private synchronized void checkAndExecutePendingTool() {
+        checkAndExecutePendingTool(currentTurnSequence);
+    }
+
+    private synchronized void checkAndExecutePendingTool(final int expectedSeq) {
         if (pendingToolName == null || isPaused || !running) return;
+        if (expectedSeq != currentTurnSequence || pendingToolSeq != currentTurnSequence) {
+            pendingToolCallId = null;
+            pendingToolName = null;
+            pendingToolArgs = null;
+            return;
+        }
 
         long now = System.currentTimeMillis();
         long remainingMs = scheduledPlayEndTimeMs - now;
@@ -355,7 +370,7 @@ public class StoryLiveClient {
             long delay = Math.max(60, Math.min(remainingMs + 60, 400));
             mainHandler.postDelayed(new Runnable() {
                 @Override public void run() {
-                    checkAndExecutePendingTool();
+                    checkAndExecutePendingTool(expectedSeq);
                 }
             }, delay);
             return;
@@ -364,32 +379,37 @@ public class StoryLiveClient {
         final String callId = pendingToolCallId;
         final String name = pendingToolName;
         final JSONObject args = pendingToolArgs;
+        final int seq = pendingToolSeq;
         pendingToolCallId = null;
         pendingToolName = null;
         pendingToolArgs = null;
 
-        executeAgentToolCall(callId, name, args);
+        executeAgentToolCall(callId, name, args, seq);
     }
 
-    private void executeAgentToolCall(String callId, String name, JSONObject args) {
+    private void executeAgentToolCall(String callId, String name, JSONObject args, int seq) {
+        synchronized (this) {
+            if (seq != currentTurnSequence || !running) return;
+        }
         try {
             JSONObject responseObj = new JSONObject();
 
             if ("advance_story_page".equals(name)) {
                 if (currentPageIndex + 1 < story.pages.size()) {
                     currentPageIndex++;
-                    final StoryModel.Page nextPage = story.pages.get(currentPageIndex);
+                    final int pageIdx = currentPageIndex;
+                    final StoryModel.Page nextPage = story.pages.get(pageIdx);
                     responseObj.put("success", true);
-                    responseObj.put("currentPageIndex", currentPageIndex);
+                    responseObj.put("currentPageIndex", pageIdx);
                     responseObj.put("totalPages", story.pages.size());
                     responseObj.put("nextPageText", nextPage.text);
                     responseObj.put("nextPageDialogue", nextPage.dialogue);
                     responseObj.put("emotion", nextPage.emotion);
-                    responseObj.put("instruction", "翻頁成功！請立刻開始生動朗讀第 " + (currentPageIndex + 1) + " 頁！讀完請繼續呼叫 advance_story_page。");
+                    responseObj.put("instruction", "翻頁成功！請立刻開始生動朗讀第 " + (pageIdx + 1) + " 頁！讀完請繼續呼叫 advance_story_page。");
 
                     mainHandler.post(new Runnable() {
                         @Override public void run() {
-                            notifyPageAdvanced(currentPageIndex, nextPage.text);
+                            notifyPageAdvanced(pageIdx, nextPage.text);
                         }
                     });
                 } else {
@@ -528,6 +548,8 @@ public class StoryLiveClient {
     }
 
     private synchronized void flushAudio() {
+        mainHandler.removeCallbacksAndMessages(null);
+        currentTurnSequence++;
         audioQueue.clear();
         scheduledPlayEndTimeMs = 0;
         pendingToolCallId = null;
@@ -605,6 +627,8 @@ public class StoryLiveClient {
         running = false;
         setupReady = false;
         isRecording.set(false);
+        mainHandler.removeCallbacksAndMessages(null);
+        flushAudio();
 
         if (micThread != null) {
             micThread.interrupt();
