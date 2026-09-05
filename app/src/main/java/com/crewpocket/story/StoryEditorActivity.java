@@ -199,32 +199,13 @@ public class StoryEditorActivity extends Activity {
         content.addView(metaCard);
 
         // ── Card 2: Chapter Pages List ──
-        LinearLayout pagesHeaderRow = new LinearLayout(this);
-        pagesHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
-        pagesHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
-        pagesHeaderRow.setPadding(0, dp(6), 0, dp(8));
-
         TextView pagesHeader = new TextView(this);
         pagesHeader.setText(I18n.t(this, "🎨 繪本跨頁內容與插圖", "🎨 Chapters & Illustrations"));
         pagesHeader.setTextColor(Color.WHITE);
         pagesHeader.setTextSize(15);
         pagesHeader.setTypeface(Typeface.DEFAULT_BOLD);
-        pagesHeaderRow.addView(pagesHeader, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        Button batchAiBtn = new Button(this);
-        batchAiBtn.setText(I18n.t(this, "🪄 批次 AI 配圖", "🪄 Batch AI Art"));
-        batchAiBtn.setTextSize(11);
-        batchAiBtn.setTextColor(CrewTheme.AMBER_400);
-        batchAiBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        batchAiBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 8));
-        batchAiBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
-        batchAiBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                autoGenerateMissingIllustrations();
-            }
-        });
-        pagesHeaderRow.addView(batchAiBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)));
-        content.addView(pagesHeaderRow);
+        pagesHeader.setPadding(0, dp(6), 0, dp(8));
+        content.addView(pagesHeader);
 
         pagesContainer = new LinearLayout(this);
         pagesContainer.setOrientation(LinearLayout.VERTICAL);
@@ -836,65 +817,5 @@ public class StoryEditorActivity extends Activity {
         builder.setView(layout);
         dialogHolder[0] = builder.create();
         dialogHolder[0].show();
-    }
-
-    private void autoGenerateMissingIllustrations() {
-        final List<Integer> missingIndices = new ArrayList<>();
-        for (int i = 0; i < story.pages.size(); i++) {
-            StoryModel.Page p = story.pages.get(i);
-            if (p.imageUri == null || p.imageUri.trim().isEmpty()) {
-                missingIndices.add(i);
-            }
-        }
-
-        if (missingIndices.isEmpty()) {
-            Toast.makeText(this, I18n.t(this, "所有頁面皆已有插圖！", "All pages already have illustrations!"), Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String apiKey = AppConfig.getGeminiApiKey(this);
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            Toast.makeText(this, I18n.t(this, "請先至設定填寫 Gemini API Key！", "Please set your Gemini API Key in Settings!"), Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle(I18n.t(this, "🪄 批次 AI 生成插圖", "🪄 Batch AI Illustration"))
-                .setMessage(I18n.t(this, "即將為 " + missingIndices.size() + " 個尚未配圖的跨頁依序生成水彩插圖，是否開始？", "Generate illustrations for " + missingIndices.size() + " pages without image?"))
-                .setPositiveButton(I18n.t(this, "開始生成", "Start"), new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface dialog, int which) {
-                        generateNextMissingIllustration(missingIndices, 0);
-                    }
-                })
-                .setNegativeButton(I18n.t(this, "取消", "Cancel"), null)
-                .show();
-    }
-
-    private void generateNextMissingIllustration(final List<Integer> indices, final int currentPos) {
-        if (currentPos >= indices.size()) {
-            Toast.makeText(this, I18n.t(this, "🎉 全部缺圖頁面插圖已生成完成！", "🎉 All illustrations completed!"), Toast.LENGTH_SHORT).show();
-            renderPagesList();
-            return;
-        }
-
-        final int pageIdx = indices.get(currentPos);
-        final StoryModel.Page p = story.pages.get(pageIdx);
-        Toast.makeText(this, I18n.t(this, "🎨 正在生成第 " + (pageIdx + 1) + " 頁插圖 (" + (currentPos + 1) + "/" + indices.size() + ")...", "Drawing illustration for page " + (pageIdx + 1) + "..."), Toast.LENGTH_SHORT).show();
-
-        String prompt = StoryIllustrationGenerator.buildPrompt(story.title, p.text, StoryIllustrationGenerator.STYLE_WATERCOLOR);
-        StoryIllustrationGenerator.generateIllustration(this, prompt, new StoryIllustrationGenerator.IllustrationCallback() {
-            @Override
-            public void onSuccess(String imageUri) {
-                p.imageUri = imageUri;
-                renderPagesList();
-                generateNextMissingIllustration(indices, currentPos + 1);
-            }
-
-            @Override
-            public void onError(String error) {
-                Toast.makeText(StoryEditorActivity.this, "第 " + (pageIdx + 1) + " 頁生成失敗: " + error, Toast.LENGTH_SHORT).show();
-                generateNextMissingIllustration(indices, currentPos + 1);
-            }
-        });
     }
 }
