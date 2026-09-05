@@ -88,7 +88,11 @@ public class VoicePreviewHelper {
                     generation.put("speechConfig", voiceConfig);
                     setup.put("generationConfig", generation);
 
-                    setup.put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", "你是兒童繪本說書人。請用溫暖親切、生動歡快的語氣說一句簡短的自我介紹（限15字以內）。例如：『嗨！我是說書人，今天想聽什麼精彩故事呢？』"))));
+                    boolean isEng = I18n.isEnglish(context);
+                    String sysPrompt = isEng
+                            ? "You are a children's picture book storyteller. Say a friendly, warm 1-sentence greeting in English (within 10 words). E.g. 'Hello! I am ready to tell wonderful stories!'"
+                            : "你是專業的繪本說書人。請用溫暖親切、生動活潑的語氣說一句簡短的自我介紹（限15字以內）。例如：『你好！我是說書人，今天想聽什麼精彩故事呢？』";
+                    setup.put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", sysPrompt))));
 
                     root.put("setup", setup);
                     ws.send(root.toString());
@@ -104,10 +108,11 @@ public class VoicePreviewHelper {
                     JSONObject resp = new JSONObject(text);
                     if (resp.has("setupComplete") || resp.has("setup_complete")) {
                         // Send prompt to speak
+                        boolean isEng = I18n.isEnglish(context);
                         JSONObject clientContent = new JSONObject();
                         JSONArray turns = new JSONArray();
                         JSONObject turn = new JSONObject().put("role", "user")
-                                .put("parts", new JSONArray().put(new JSONObject().put("text", "請打個招呼！")));
+                                .put("parts", new JSONArray().put(new JSONObject().put("text", isEng ? "Please say hello in your voice!" : "請用你的原聲打個招呼！")));
                         turns.put(turn);
                         clientContent.put("turns", turns);
                         clientContent.put("turnComplete", true);

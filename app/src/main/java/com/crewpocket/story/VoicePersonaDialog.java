@@ -2,6 +2,7 @@ package com.crewpocket.story;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -95,36 +96,8 @@ public class VoicePersonaDialog {
         return "🎙️ " + voiceName;
     }
 
-    private static void playAudition(final Context context, final VoiceInfo voice) {
-        if (voice == null) return;
-        if (previewTts == null) {
-            previewTts = new TextToSpeech(context.getApplicationContext(), new TextToSpeech.OnInitListener() {
-                @Override public void onInit(int status) {
-                    if (status == TextToSpeech.SUCCESS) {
-                        speakVoiceSample(context, voice);
-                    }
-                }
-            });
-        } else {
-            speakVoiceSample(context, voice);
-        }
-    }
-
-    private static void speakVoiceSample(Context context, VoiceInfo voice) {
-        if (previewTts == null || voice == null) return;
-        try {
-            previewTts.stop();
-            previewTts.setPitch(voice.pitch);
-            previewTts.setSpeechRate(1.0f);
-            if (I18n.isEnglish(context)) {
-                previewTts.setLanguage(Locale.US);
-                previewTts.speak("Hello! I am " + voice.name + ", your picture book storyteller. Let's explore wonderful stories together!", TextToSpeech.QUEUE_FLUSH, null, "story_sample_" + voice.name);
-            } else {
-                previewTts.setLanguage(Locale.TRADITIONAL_CHINESE);
-                previewTts.speak("你好！我是 " + voice.name + "，你的繪本說書人，今天想聽什麼精彩的故事呢？", TextToSpeech.QUEUE_FLUSH, null, "story_sample_" + voice.name);
-            }
-        } catch (Exception ignored) {}
-    }
+    private static String currentPlayingVoice = null;
+    private static Button currentPlayingBtn = null;
 
     public static void show(final Context context, final Runnable onVoiceSelected) {
         final boolean en = I18n.isEnglish(context);
@@ -226,21 +199,78 @@ public class VoicePersonaDialog {
                     infoCol.addView(descView);
 
                     // Audition Button
-                    Button previewBtn = new Button(context);
-                    previewBtn.setText("▶️ " + (en ? "Play" : "試聽"));
+                    final Button previewBtn = new Button(context);
+                    final boolean isThisPlaying = voice.name.equalsIgnoreCase(currentPlayingVoice);
+                    previewBtn.setText(isThisPlaying ? ("🔊 " + (en ? "Playing" : "試聽中")) : ("▶️ " + (en ? "Play" : "試聽")));
                     previewBtn.setTextSize(11);
-                    previewBtn.setTextColor(Color.WHITE);
+                    previewBtn.setTextColor(isThisPlaying ? CrewTheme.AMBER_400 : Color.WHITE);
                     previewBtn.setTypeface(Typeface.DEFAULT_BOLD);
                     previewBtn.setAllCaps(false);
                     GradientDrawable pBg = new GradientDrawable();
                     pBg.setColor(Color.parseColor("#1E293B"));
                     pBg.setCornerRadius(dp8);
-                    pBg.setStroke(dp(context, 1), Color.parseColor("#475569"));
+                    pBg.setStroke(dp(context, 1), isThisPlaying ? CrewTheme.AMBER_400 : Color.parseColor("#475569"));
                     previewBtn.setBackground(pBg);
                     previewBtn.setPadding(dp8, dp4, dp8, dp4);
+                    if (isThisPlaying) {
+                        currentPlayingBtn = previewBtn;
+                    }
+
                     previewBtn.setOnClickListener(new View.OnClickListener() {
                         @Override public void onClick(View v) {
-                            playAudition(context, voice);
+                            if (voice.name.equalsIgnoreCase(currentPlayingVoice)) {
+                                VoicePreviewHelper.stopPreview();
+                                currentPlayingVoice = null;
+                                currentPlayingBtn = null;
+                                previewBtn.setText("▶️ " + (en ? "Play" : "試聽"));
+                                previewBtn.setTextColor(Color.WHITE);
+                                return;
+                            }
+
+                            if (currentPlayingBtn != null) {
+                                currentPlayingBtn.setText("▶️ " + (en ? "Play" : "試聽"));
+                                currentPlayingBtn.setTextColor(Color.WHITE);
+                            }
+
+                            currentPlayingVoice = voice.name;
+                            currentPlayingBtn = previewBtn;
+                            previewBtn.setText("⏳ " + (en ? "..." : "連線中"));
+                            previewBtn.setTextColor(CrewTheme.AMBER_400);
+
+                            VoicePreviewHelper.previewVoice(context, voice.name, new VoicePreviewHelper.PreviewCallback() {
+                                @Override
+                                public void onStart() {
+                                    if (voice.name.equalsIgnoreCase(currentPlayingVoice) && currentPlayingBtn != null) {
+                                        currentPlayingBtn.setText("🔊 " + (en ? "Playing" : "試聽中"));
+                                        currentPlayingBtn.setTextColor(CrewTheme.AMBER_400);
+                                    }
+                                }
+
+                                @Override
+                                public void onDone() {
+                                    if (voice.name.equalsIgnoreCase(currentPlayingVoice)) {
+                                        if (currentPlayingBtn != null) {
+                                            currentPlayingBtn.setText("▶️ " + (en ? "Play" : "試聽"));
+                                            currentPlayingBtn.setTextColor(Color.WHITE);
+                                        }
+                                        currentPlayingVoice = null;
+                                        currentPlayingBtn = null;
+                                    }
+                                }
+
+                                @Override
+                                public void onError(String msg) {
+                                    if (voice.name.equalsIgnoreCase(currentPlayingVoice)) {
+                                        if (currentPlayingBtn != null) {
+                                            currentPlayingBtn.setText("▶️ " + (en ? "Play" : "試聽"));
+                                            currentPlayingBtn.setTextColor(Color.WHITE);
+                                        }
+                                        currentPlayingVoice = null;
+                                        currentPlayingBtn = null;
+                                    }
+                                    Toast.makeText(context, (en ? "Audition failed: " : "試聽失敗：") + msg, Toast.LENGTH_SHORT).show();
+                                }
+                            });
                         }
                     });
                     itemCard.addView(previewBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(context, 34)));
@@ -248,6 +278,9 @@ public class VoicePersonaDialog {
                     // Click item to select
                     itemCard.setOnClickListener(new View.OnClickListener() {
                         @Override public void onClick(View v) {
+                            VoicePreviewHelper.stopPreview();
+                            currentPlayingVoice = null;
+                            currentPlayingBtn = null;
                             AppConfig.setVoiceName(context, voice.name);
                             Toast.makeText(context, (en ? "✅ Switched voice to: " : "✅ 已選用聲線：") + voice.name, Toast.LENGTH_SHORT).show();
                             if (dialogRef[0] != null) dialogRef[0].dismiss();
@@ -313,6 +346,13 @@ public class VoicePersonaDialog {
 
         builder.setView(root);
         builder.setNegativeButton(en ? "Cancel" : "取消", null);
+        builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(DialogInterface d) {
+                VoicePreviewHelper.stopPreview();
+                currentPlayingVoice = null;
+                currentPlayingBtn = null;
+            }
+        });
         dialogRef[0] = builder.show();
     }
 
