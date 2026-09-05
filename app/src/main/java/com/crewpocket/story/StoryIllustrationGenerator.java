@@ -103,8 +103,9 @@ public class StoryIllustrationGenerator {
                                        final String lastError,
                                        final IllustrationCallback callback) {
         if (modelIdx >= IMAGEN_MODELS.length) {
-            String errDetail = (lastError != null && !lastError.isEmpty()) ? (" (" + lastError + ")") : "";
-            notifyError(callback, I18n.t(context, "AI 繪圖生成失敗" + errDetail + "，請確認 API Key 權限！", "AI image generation failed" + errDetail + ". Please check API Key permissions."));
+            // Automatic fallback to high-quality storybook illustration engine (Flux / SDXL)
+            // for free-tier Gemini API keys that don't have Google Cloud Billing linked.
+            tryPollinationsFallback(context, prompt, lastError, callback);
             return;
         }
 
@@ -206,9 +207,53 @@ public class StoryIllustrationGenerator {
         }
     }
 
-    private static String saveBase64Image(Context context, String base64Data) {
+    private static void tryPollinationsFallback(final Context context,
+                                                final String prompt,
+                                                final String lastError,
+                                                final IllustrationCallback callback) {
         try {
-            byte[] imageBytes = Base64.decode(base64Data, Base64.DEFAULT);
+            String encodedPrompt = java.net.URLEncoder.encode(prompt, "UTF-8");
+            String url = "https://image.pollinations.ai/prompt/" + encodedPrompt + "?width=800&height=600&nologo=true&seed=" + (System.currentTimeMillis() % 1000000);
+
+            Request request = new Request.Builder()
+                    .url(url)
+                    .build();
+
+            HTTP_CLIENT.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    notifyError(callback, I18n.t(context, "AI 繪圖生成失敗 (" + lastError + ")", "AI Image generation failed: " + lastError));
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    try {
+                        if (response.isSuccessful() && response.body() != null) {
+                            byte[] imgBytes = response.body().bytes();
+                            if (imgBytes != null && imgBytes.length > 500) {
+                                String savedUri = saveRawBytesImage(context, imgBytes);
+                                if (savedUri != null) {
+                                    notifySuccess(callback, savedUri);
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    finally {
+                        if (response != null) {
+                            try { response.close(); } catch (Exception ignored) {}
+                        }
+                    }
+                    notifyError(callback, I18n.t(context, "AI 繪圖生成失敗 (" + lastError + ")", "AI Image generation failed (" + lastError + ")"));
+                }
+            });
+        } catch (Exception e) {
+            notifyError(callback, I18n.t(context, "AI 繪圖生成失敗 (" + lastError + ")", "AI Image generation failed (" + lastError + ")"));
+        }
+    }
+
+    private static String saveRawBytesImage(Context context, byte[] imageBytes) {
+        try {
             File dir = new File(context.getFilesDir(), "illustrations");
             if (!dir.exists()) {
                 dir.mkdirs();
@@ -220,7 +265,17 @@ public class StoryIllustrationGenerator {
             fos.close();
             return Uri.fromFile(file).toString();
         } catch (Exception e) {
-            Log.e(TAG, "Failed to save image to disk", e);
+            Log.e(TAG, "Failed to save raw image to disk", e);
+            return null;
+        }
+    }
+
+    private static String saveBase64Image(Context context, String base64Data) {
+        try {
+            byte[] imageBytes = Base64.decode(base64Data, Base64.DEFAULT);
+            return saveRawBytesImage(context, imageBytes);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to decode base64 image", e);
             return null;
         }
     }
