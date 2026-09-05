@@ -222,35 +222,15 @@ public class StoryIllustrationGenerator {
         }
     }
 
-    private static final String[] FREE_MODELS = {
-            "turbo",
-            "flux",
-            "flux-anime"
-    };
-
     private static void tryPollinationsFallback(final Context context,
                                                 final String prompt,
                                                 final String lastError,
                                                 final IllustrationCallback callback) {
-        tryPollinationsModel(context, 0, prompt, lastError, callback);
-    }
-
-    private static void tryPollinationsModel(final Context context,
-                                             final int modelIdx,
-                                             final String prompt,
-                                             final String lastError,
-                                             final IllustrationCallback callback) {
-        if (modelIdx >= FREE_MODELS.length) {
-            String errDetail = (lastError != null && !lastError.isEmpty()) ? (" (" + lastError + ")") : "";
-            notifyError(callback, I18n.t(context, "免費生圖伺服器忙碌中" + errDetail + "，請稍後重試！", "Free image server busy" + errDetail + ". Please try again shortly."));
-            return;
-        }
-
-        final String model = FREE_MODELS[modelIdx];
         try {
             String encodedPrompt = java.net.URLEncoder.encode(prompt, "UTF-8");
             long seed = (System.currentTimeMillis() + (long)(Math.random() * 10000)) % 1000000;
-            String url = "https://image.pollinations.ai/prompt/" + encodedPrompt + "?model=" + model + "&width=768&height=576&nologo=true&enhance=false&seed=" + seed;
+            // Use turbo model directly without hammering cascading models on 429
+            String url = "https://image.pollinations.ai/prompt/" + encodedPrompt + "?model=turbo&width=768&height=576&nologo=true&enhance=false&seed=" + seed;
 
             Request request = new Request.Builder()
                     .url(url)
@@ -262,8 +242,8 @@ public class StoryIllustrationGenerator {
             HTTP_CLIENT.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    Log.w(TAG, "Pollinations model " + model + " failed: " + e.getMessage());
-                    tryPollinationsModel(context, modelIdx + 1, prompt, e.getMessage(), callback);
+                    Log.w(TAG, "Free image gen failed: " + e.getMessage());
+                    notifyError(callback, I18n.t(context, "連線免費生圖伺服器失敗，請稍等片刻再試！", "Free image connection failed. Please try again in a moment."));
                 }
 
                 @Override
@@ -279,21 +259,26 @@ public class StoryIllustrationGenerator {
                                 }
                             }
                         }
-                        Log.w(TAG, "Pollinations model " + model + " HTTP " + response.code());
+
+                        int code = response.code();
+                        Log.w(TAG, "Free image server responded with HTTP " + code);
+                        if (code == 429) {
+                            notifyError(callback, I18n.t(context, "生圖請求過於頻繁（HTTP 429），請稍等 10~20 秒後再試！", "Rate limited (HTTP 429). Please wait 10-20 seconds and try again!"));
+                        } else {
+                            notifyError(callback, I18n.t(context, "免費生圖伺服器忙碌（HTTP " + code + "），請稍後再試！", "Free image server busy (HTTP " + code + "). Please try again later."));
+                        }
                     } catch (Exception e) {
-                        Log.w(TAG, "Pollinations model " + model + " error: " + e.getMessage());
+                        Log.w(TAG, "Free image parse error: " + e.getMessage());
+                        notifyError(callback, I18n.t(context, "圖片處理失敗，請稍候重試！", "Image processing failed. Please try again."));
                     } finally {
                         if (response != null) {
                             try { response.close(); } catch (Exception ignored) {}
                         }
                     }
-
-                    // Fallback to next free model
-                    tryPollinationsModel(context, modelIdx + 1, prompt, "HTTP " + response.code(), callback);
                 }
             });
         } catch (Exception e) {
-            tryPollinationsModel(context, modelIdx + 1, prompt, e.getMessage(), callback);
+            notifyError(callback, I18n.t(context, "生圖發生錯誤：" + e.getMessage() + "，請稍後重試！", "Error: " + e.getMessage()));
         }
     }
 
