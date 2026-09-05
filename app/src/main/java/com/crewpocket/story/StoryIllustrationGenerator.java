@@ -52,6 +52,11 @@ public class StoryIllustrationGenerator {
         void onError(String error);
     }
 
+    public interface PromptEnhanceCallback {
+        void onSuccess(String enhancedPrompt);
+        void onError(String error);
+    }
+
     public static String buildPrompt(String storyTitle, String pageNarration, String styleKey) {
         String styleDesc;
         if (STYLE_3D.equalsIgnoreCase(styleKey)) {
@@ -77,6 +82,152 @@ public class StoryIllustrationGenerator {
         }
         sb.append("No text, no letters, no words in the image, pure illustration.");
         return sb.toString();
+    }
+
+    public static void enhancePromptWithGemini(final Context context,
+                                               final String storyTitle,
+                                               final String pageNarration,
+                                               final String characterName,
+                                               final String emotion,
+                                               final String styleKey,
+                                               final PromptEnhanceCallback callback) {
+        final String apiKey = AppConfig.getGeminiApiKey(context);
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            notifyEnhanceError(callback, I18n.t(context, "請先至設定填寫 Gemini API Key！", "Please enter Gemini API Key in Settings!"));
+            return;
+        }
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                tryEnhanceWithModel(context, 0, apiKey.trim(), storyTitle, pageNarration, characterName, emotion, styleKey, callback);
+            }
+        }).start();
+    }
+
+    private static void tryEnhanceWithModel(final Context context,
+                                            final int modelIdx,
+                                            final String apiKey,
+                                            final String storyTitle,
+                                            final String pageNarration,
+                                            final String characterName,
+                                            final String emotion,
+                                            final String styleKey,
+                                            final PromptEnhanceCallback callback) {
+        if (modelIdx >= StoryGenerator.CANDIDATE_MODELS.length) {
+            notifyEnhanceError(callback, I18n.t(context, "AI 提示詞優化失敗，請稍後再試！", "Prompt enhancement failed."));
+            return;
+        }
+
+        final String model = StoryGenerator.CANDIDATE_MODELS[modelIdx];
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
+
+        try {
+            String styleGuidance;
+            if (STYLE_3D.equalsIgnoreCase(styleKey)) {
+                styleGuidance = "3D Pixar and Disney animation film render, charming character proportions, volumetric studio lighting, subsurface scattering, tactile textures, rich vivid colors";
+            } else if (STYLE_CRAYON.equalsIgnoreCase(styleKey)) {
+                styleGuidance = "Charming children's crayon and colored pencil drawing on textured heavy craft paper, warm naive art style, joyful vibrant colors, visible pencil strokes";
+            } else if (STYLE_CLASSIC.equalsIgnoreCase(styleKey)) {
+                styleGuidance = "Golden age vintage fairy tale book illustration, Arthur Rackham and Beatrix Potter inspired, detailed ink lineart and warm glowing watercolor wash, timeless magical atmosphere";
+            } else if (STYLE_ANIME.equalsIgnoreCase(styleKey)) {
+                styleGuidance = "Dreamy Studio Ghibli and Makoto Shinkai anime storybook illustration, breathtaking soft sky lighting, lush nature, expressive character design, magical dust particles";
+            } else {
+                styleGuidance = "Award-winning children's picture book watercolor and ink illustration, cozy pastel tones, dreamy atmosphere, fluid wet-on-wet paint texture, enchanting lighting";
+            }
+
+            StringBuilder userReq = new StringBuilder();
+            userReq.append("You are an elite visual prompt engineer specializing in award-winning children's storybook illustrations for diffusion models (Imagen 3 / SDXL).\n");
+            userReq.append("Your task: Expand the provided story context into a single, cohesive, vivid English visual prompt (around 40-70 words) that depicts a captivating picture book scene.\n\n");
+            userReq.append("Context:\n");
+            if (storyTitle != null && !storyTitle.trim().isEmpty()) userReq.append("- Story Theme: ").append(storyTitle.trim()).append("\n");
+            if (characterName != null && !characterName.trim().isEmpty()) userReq.append("- Main Character: ").append(characterName.trim()).append("\n");
+            if (emotion != null && !emotion.trim().isEmpty()) userReq.append("- Emotional Mood: ").append(emotion.trim()).append("\n");
+            if (pageNarration != null && !pageNarration.trim().isEmpty()) userReq.append("- Scene Narration: ").append(pageNarration.trim()).append("\n");
+            userReq.append("- Required Art Style: ").append(styleGuidance).append("\n\n");
+            userReq.append("Guidelines:\n");
+            userReq.append("1. Focus strictly on visual elements: character pose/expression, focal scene action, cinematic camera angle (e.g. eye-level, low angle wide shot), lighting (e.g. golden hour backlight, soft moonlight), background environment detail.\n");
+            userReq.append("2. Seamlessly incorporate the requested Art Style keywords.\n");
+            userReq.append("3. End the prompt with: \", pure illustration, no text, no words, no letters, masterpiece, trending picture book art\".\n");
+            userReq.append("4. Output ONLY the raw prompt string. Do NOT add quotation marks, markdown headings, bullets, or explanations.");
+
+            JSONObject requestJson = new JSONObject();
+            JSONArray contents = new JSONArray();
+            JSONObject contentObj = new JSONObject();
+            contentObj.put("role", "user");
+            JSONArray parts = new JSONArray();
+            JSONObject part = new JSONObject();
+            part.put("text", userReq.toString());
+            parts.put(part);
+            contentObj.put("parts", parts);
+            contents.put(contentObj);
+            requestJson.put("contents", contents);
+
+            JSONObject genConfig = new JSONObject();
+            genConfig.put("temperature", 0.7);
+            genConfig.put("maxOutputTokens", 200);
+            requestJson.put("generationConfig", genConfig);
+
+            RequestBody body = RequestBody.create(
+                    MediaType.parse("application/json; charset=utf-8"),
+                    requestJson.toString()
+            );
+
+            Request request = new Request.Builder()
+                    .url(endpoint)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build();
+
+            HTTP_CLIENT.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    Log.w(TAG, "Enhance with " + model + " failed: " + e.getMessage());
+                    tryEnhanceWithModel(context, modelIdx + 1, apiKey, storyTitle, pageNarration, characterName, emotion, styleKey, callback);
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    try {
+                        if (response.isSuccessful() && response.body() != null) {
+                            String resStr = response.body().string();
+                            JSONObject resObj = new JSONObject(resStr);
+                            JSONArray candidates = resObj.optJSONArray("candidates");
+                            if (candidates != null && candidates.length() > 0) {
+                                JSONObject cand = candidates.getJSONObject(0);
+                                JSONObject content = cand.optJSONObject("content");
+                                if (content != null) {
+                                    JSONArray cParts = content.optJSONArray("parts");
+                                    if (cParts != null && cParts.length() > 0) {
+                                        String rawPrompt = cParts.getJSONObject(0).optString("text", "").trim();
+                                        if (!rawPrompt.isEmpty()) {
+                                            // Clean up any extra quotes or markdown fences
+                                            rawPrompt = rawPrompt.replaceAll("^```.*\\n?", "").replaceAll("\\n?```$", "").trim();
+                                            if (rawPrompt.startsWith("\"") && rawPrompt.endsWith("\"") && rawPrompt.length() > 2) {
+                                                rawPrompt = rawPrompt.substring(1, rawPrompt.length() - 1).trim();
+                                            }
+                                            notifyEnhanceSuccess(callback, rawPrompt);
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Log.w(TAG, "Enhance with " + model + " error: HTTP " + response.code());
+                    } catch (Exception e) {
+                        Log.w(TAG, "Enhance parse error: " + e.getMessage());
+                    } finally {
+                        if (response != null) {
+                            try { response.close(); } catch (Exception ignored) {}
+                        }
+                    }
+
+                    tryEnhanceWithModel(context, modelIdx + 1, apiKey, storyTitle, pageNarration, characterName, emotion, styleKey, callback);
+                }
+            });
+        } catch (Exception e) {
+            tryEnhanceWithModel(context, modelIdx + 1, apiKey, storyTitle, pageNarration, characterName, emotion, styleKey, callback);
+        }
     }
 
     public static void generateIllustration(final Context context,
@@ -339,6 +490,18 @@ public class StoryIllustrationGenerator {
     }
 
     private static void notifyError(final IllustrationCallback cb, final String error) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override public void run() { cb.onError(error); }
+        });
+    }
+
+    private static void notifyEnhanceSuccess(final PromptEnhanceCallback cb, final String prompt) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override public void run() { cb.onSuccess(prompt); }
+        });
+    }
+
+    private static void notifyEnhanceError(final PromptEnhanceCallback cb, final String error) {
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override public void run() { cb.onError(error); }
         });

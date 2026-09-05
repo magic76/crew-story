@@ -711,25 +711,70 @@ public class StoryEditorActivity extends Activity {
         styleScroll.addView(styleRow);
         layout.addView(styleScroll);
 
-        // Prompt edit
+        // Prompt edit header with AI Enhance button
+        LinearLayout promptHeaderRow = new LinearLayout(this);
+        promptHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        promptHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        promptHeaderRow.setPadding(0, dp(12), 0, dp(6));
+
         TextView promptLabel = new TextView(this);
-        promptLabel.setText(I18n.t(this, "📝 提示詞 (可自由微調)：", "📝 Prompt (Editable):"));
+        promptLabel.setText(I18n.t(this, "📝 提示詞：", "📝 Prompt:"));
         promptLabel.setTextColor(Color.WHITE);
         promptLabel.setTextSize(12);
         promptLabel.setTypeface(Typeface.DEFAULT_BOLD);
-        promptLabel.setPadding(0, dp(12), 0, dp(6));
-        layout.addView(promptLabel);
+        promptHeaderRow.addView(promptLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final Button enhancePromptBtn = new Button(this);
+        enhancePromptBtn.setText(I18n.t(this, "🪄 AI 魔法優化", "🪄 AI Enhance"));
+        enhancePromptBtn.setTextSize(11);
+        enhancePromptBtn.setTextColor(CrewTheme.SKY_400);
+        enhancePromptBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        enhancePromptBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), CrewTheme.SKY_400, 6));
+        enhancePromptBtn.setPadding(dp(10), 0, dp(10), 0);
+        promptHeaderRow.addView(enhancePromptBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30)));
+        layout.addView(promptHeaderRow);
 
         promptInput.setText(StoryIllustrationGenerator.buildPrompt(story.title, p.text, selectedStyle[0]));
         promptInput.setTextColor(Color.WHITE);
         promptInput.setHintTextColor(CrewTheme.TEXT_MUTED);
         promptInput.setTextSize(12);
         promptInput.setMinLines(3);
-        promptInput.setMaxLines(5);
+        promptInput.setMaxLines(6);
         promptInput.setGravity(Gravity.TOP);
         promptInput.setPadding(dp(12), dp(10), dp(12), dp(10));
         promptInput.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), CrewTheme.BORDER_DEFAULT, 10));
         layout.addView(promptInput);
+
+        enhancePromptBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                enhancePromptBtn.setEnabled(false);
+                enhancePromptBtn.setText(I18n.t(StoryEditorActivity.this, "⏳ 構思中...", "⏳ Enhancing..."));
+                StoryIllustrationGenerator.enhancePromptWithGemini(
+                        StoryEditorActivity.this,
+                        story.title,
+                        p.text,
+                        p.characterName,
+                        p.emotion,
+                        selectedStyle[0],
+                        new StoryIllustrationGenerator.PromptEnhanceCallback() {
+                            @Override
+                            public void onSuccess(String enhancedPrompt) {
+                                enhancePromptBtn.setEnabled(true);
+                                enhancePromptBtn.setText(I18n.t(StoryEditorActivity.this, "🪄 AI 魔法優化", "🪄 AI Enhance"));
+                                promptInput.setText(enhancedPrompt);
+                                Toast.makeText(StoryEditorActivity.this, I18n.t(StoryEditorActivity.this, "✨ 已由 Gemini 擴充為頂級繪本提示詞！", "✨ Enhanced by Gemini!"), Toast.LENGTH_SHORT).show();
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                enhancePromptBtn.setEnabled(true);
+                                enhancePromptBtn.setText(I18n.t(StoryEditorActivity.this, "🪄 AI 魔法優化", "🪄 AI Enhance"));
+                                Toast.makeText(StoryEditorActivity.this, error, Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                );
+            }
+        });
 
         // Progress indicator container
         final LinearLayout progressBox = new LinearLayout(this);
