@@ -186,10 +186,6 @@ public class StoryLiveClient {
     }
 
     private int currentTurnSequence = 0;
-    private volatile String pendingToolCallId = null;
-    private volatile String pendingToolName = null;
-    private volatile JSONObject pendingToolArgs = null;
-    private volatile int pendingToolSeq = 0;
     private volatile long scheduledPlayEndTimeMs = 0;
 
     private String buildSetup() throws Exception {
@@ -210,7 +206,6 @@ public class StoryLiveClient {
 
         String storyLang = AppConfig.getStoryLanguage(context);
 
-        // System Instruction & Tool Definitions for Storytelling Agent Loop
         JSONObject sysInstruction = new JSONObject();
         JSONArray parts = new JSONArray();
         JSONObject part = new JSONObject();
@@ -218,48 +213,14 @@ public class StoryLiveClient {
         StringBuilder sb = new StringBuilder();
         sb.append("你是專業、富有情感的兒童故事繪本說書人「波波老師」。\n");
         sb.append("朗讀語言：").append(storyLang).append("。\n");
-        sb.append("你目前正在為小聽眾朗讀一本繪本故事：《").append(story.title).append("》。\n");
-        sb.append("故事總共有 ").append(story.pages.size()).append(" 頁。\n\n");
-        sb.append("【故事全文腳本資料】\n");
-        for (int i = 0; i < story.pages.size(); i++) {
-            StoryModel.Page p = story.pages.get(i);
-            sb.append("第 ").append(i + 1).append(" 頁：\n");
-            sb.append("【旁白】").append(p.text).append("\n");
-            if (p.dialogue != null && !p.dialogue.isEmpty()) {
-                sb.append("【對白】(").append(p.characterName != null ? p.characterName : "角色").append(" / ").append(p.emotion).append("語氣): ").append(p.dialogue).append("\n");
-            }
-            sb.append("\n");
-        }
-
-        sb.append("【說書人 Agent Loop 核心職責與規則】\n");
-        sb.append("1. 請以親切生動、富有感情的童趣語氣專注朗讀繪本故事。\n");
-        sb.append("2. 每當讀完當前頁面的旁白與對白後，**必須立即呼叫工具 `advance_story_page`** 將繪本翻到下一頁！\n");
-        sb.append("3. 呼叫 `advance_story_page` 取得下一頁內容後，請立刻繼續朗讀下一頁，保持 Agent 連續說書循環，絕不中途停止，直到整本故事讀完！\n");
-        sb.append("4. 當讀到最後一頁並朗讀完畢後，請呼叫工具 `finish_story` 宣告故事圓滿結束，並說一句溫暖的祝福結語。\n");
+        sb.append("你正在為小聽眾生動朗讀一本繪本故事：《").append(story.title).append("》。\n");
+        sb.append("請以親切生動、富有感情的童趣語氣專注朗讀指定頁面的繪本內容（包含旁白與角色對白演繹）。\n");
+        sb.append("請直接生動朗讀該頁內容，不需要額外的問候語或自言自語。\n");
 
         part.put("text", sb.toString());
         parts.put(part);
         sysInstruction.put("parts", parts);
         setup.put("systemInstruction", sysInstruction);
-
-        // Tool: advance_story_page & finish_story
-        JSONArray tools = new JSONArray();
-        JSONObject advTool = new JSONObject();
-        advTool.put("name", "advance_story_page");
-        advTool.put("description", "當目前頁面朗讀完畢時呼叫此工具，將繪本翻到下一頁並取得下一頁的內容繼續朗讀。");
-        JSONObject advParams = new JSONObject();
-        advParams.put("type", "OBJECT");
-        advParams.put("properties", new JSONObject());
-        advTool.put("parameters", advParams);
-
-        JSONObject finishTool = new JSONObject();
-        finishTool.put("name", "finish_story");
-        finishTool.put("description", "當最後一頁朗讀完畢時呼叫此工具，完成整本繪本的播放。");
-        finishTool.put("parameters", advParams);
-
-        tools.put(advTool);
-        tools.put(finishTool);
-        setup.put("tools", new JSONArray().put(new JSONObject().put("functionDeclarations", tools)));
 
         root.put("setup", setup);
         return root.toString();
@@ -274,7 +235,6 @@ public class StoryLiveClient {
                 notifyStatus("🎙️ AI 說書人已就緒，開始說故事！");
                 notifyConnected();
                 startPlaybackEngine();
-                // Storyteller mode: No mic recording streaming so ambient sounds will never interrupt narration
                 sendNarrateCurrentPageDirective();
                 return;
             }
@@ -302,29 +262,25 @@ public class StoryLiveClient {
 
                 if (server.optBoolean("turnComplete", server.optBoolean("turn_complete", false))) {
                     if (usingNativeOboe) NativeOboeOutput.finishTurn();
-                    long remaining = Math.max(0, scheduledPlayEndTimeMs - System.currentTimeMillis());
+                    final int seq = currentTurnSequence;
+                    long now = System.currentTimeMillis();
+                    long remaining = Math.max(0, scheduledPlayEndTimeMs - now);
+
+                    // 1. Notify AI speech ended when audio finishes physically playing
                     mainHandler.postDelayed(new Runnable() {
                         @Override public void run() {
-                            if (listener != null) listener.onAiSpeechEnded();
+                            if (seq == currentTurnSequence && listener != null) {
+                                listener.onAiSpeechEnded();
+                            }
                         }
                     }, remaining);
-                }
-            }
 
-            JSONObject toolCall = response.optJSONObject("toolCall");
-            if (toolCall == null) toolCall = response.optJSONObject("tool_call");
-            if (toolCall != null) {
-                JSONArray functionCalls = toolCall.optJSONArray("functionCalls");
-                if (functionCalls == null) functionCalls = toolCall.optJSONArray("function_calls");
-                if (functionCalls != null && functionCalls.length() > 0) {
-                    final int seq = currentTurnSequence;
-                    for (int i = 0; i < functionCalls.length(); i++) {
-                        JSONObject fc = functionCalls.getJSONObject(i);
-                        String id = fc.optString("id", "call_0");
-                        String name = fc.optString("name", "");
-                        JSONObject args = fc.optJSONObject("args");
-                        handleAgentToolCall(id, name, args, seq);
-                    }
+                    // 2. Schedule auto page turn after audio finishes + 900ms comfortable pause
+                    mainHandler.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            handleAutoAdvance(seq);
+                        }
+                    }, remaining + 900);
                 }
             }
 
@@ -333,122 +289,40 @@ public class StoryLiveClient {
         }
     }
 
-    private synchronized void handleAgentToolCall(String callId, String name, JSONObject args, final int seq) {
-        if (seq != currentTurnSequence || !running || isPaused) return;
-        // Hold the tool call until all queued audio finishes playing physically through speaker!
-        pendingToolCallId = callId;
-        pendingToolName = name;
-        pendingToolArgs = args;
-        pendingToolSeq = seq;
+    private synchronized void handleAutoAdvance(final int seq) {
+        if (seq != currentTurnSequence || isPaused || !running) return;
 
         long now = System.currentTimeMillis();
-        long remaining = Math.max(0, scheduledPlayEndTimeMs - now);
-        mainHandler.postDelayed(new Runnable() {
-            @Override public void run() {
-                checkAndExecutePendingTool(seq);
-            }
-        }, Math.max(60, remaining + 60));
-    }
-
-    private synchronized void checkAndExecutePendingTool() {
-        checkAndExecutePendingTool(currentTurnSequence);
-    }
-
-    private synchronized void checkAndExecutePendingTool(final int expectedSeq) {
-        if (pendingToolName == null || isPaused || !running) return;
-        if (expectedSeq != currentTurnSequence || pendingToolSeq != currentTurnSequence) {
-            pendingToolCallId = null;
-            pendingToolName = null;
-            pendingToolArgs = null;
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        long remainingMs = scheduledPlayEndTimeMs - now;
-
-        if (!audioQueue.isEmpty() || remainingMs > 0) {
-            long delay = Math.max(60, Math.min(remainingMs + 60, 400));
+        long remaining = scheduledPlayEndTimeMs - now;
+        if (!audioQueue.isEmpty() || remaining > 0) {
+            long delay = Math.max(80, Math.min(remaining + 80, 500));
             mainHandler.postDelayed(new Runnable() {
                 @Override public void run() {
-                    checkAndExecutePendingTool(expectedSeq);
+                    handleAutoAdvance(seq);
                 }
             }, delay);
             return;
         }
 
-        final String callId = pendingToolCallId;
-        final String name = pendingToolName;
-        final JSONObject args = pendingToolArgs;
-        final int seq = pendingToolSeq;
-        pendingToolCallId = null;
-        pendingToolName = null;
-        pendingToolArgs = null;
-
-        executeAgentToolCall(callId, name, args, seq);
-    }
-
-    private void executeAgentToolCall(String callId, String name, JSONObject args, int seq) {
-        synchronized (this) {
-            if (seq != currentTurnSequence || !running) return;
-        }
-        try {
-            JSONObject responseObj = new JSONObject();
-
-            if ("advance_story_page".equals(name)) {
-                if (currentPageIndex + 1 < story.pages.size()) {
-                    currentPageIndex++;
-                    final int pageIdx = currentPageIndex;
-                    final StoryModel.Page nextPage = story.pages.get(pageIdx);
-                    responseObj.put("success", true);
-                    responseObj.put("currentPageIndex", pageIdx);
-                    responseObj.put("totalPages", story.pages.size());
-                    responseObj.put("nextPageText", nextPage.text);
-                    responseObj.put("nextPageDialogue", nextPage.dialogue);
-                    responseObj.put("emotion", nextPage.emotion);
-                    responseObj.put("instruction", "翻頁成功！請立刻開始生動朗讀第 " + (pageIdx + 1) + " 頁！讀完請繼續呼叫 advance_story_page。");
-
-                    mainHandler.post(new Runnable() {
-                        @Override public void run() {
-                            notifyPageAdvanced(pageIdx, nextPage.text);
-                        }
-                    });
-                } else {
-                    responseObj.put("success", false);
-                    responseObj.put("message", "已經是故事的最後一頁了，請呼叫 finish_story 作溫馨結尾！");
+        if (currentPageIndex + 1 < story.pages.size()) {
+            currentPageIndex++;
+            notifyStatus("正在朗讀第 " + (currentPageIndex + 1) + " 頁…");
+            sendNarrateCurrentPageDirective();
+        } else {
+            isFinished = true;
+            notifyStatus("🎉 故事全篇朗讀完成！");
+            mainHandler.post(new Runnable() {
+                @Override public void run() {
+                    if (listener != null) listener.onStoryFinished();
                 }
-            } else if ("finish_story".equals(name)) {
-                isFinished = true;
-                responseObj.put("success", true);
-                responseObj.put("message", "故事全書朗讀完成！");
-                mainHandler.post(new Runnable() {
-                    @Override public void run() {
-                        if (listener != null) listener.onStoryFinished();
-                    }
-                });
-            } else {
-                responseObj.put("success", false);
-                responseObj.put("error", "未知工具: " + name);
-            }
-
-            // Send tool response back to Gemini Live
-            JSONObject fr = new JSONObject();
-            fr.put("id", callId);
-            fr.put("name", name);
-            fr.put("response", responseObj);
-
-            JSONObject root = new JSONObject();
-            root.put("toolResponse", new JSONObject().put("functionResponses", new JSONArray().put(fr)));
-            if (webSocket != null) {
-                webSocket.send(root.toString());
-            }
-
-        } catch (Exception e) {
-            Log.e(TAG, "Error handling tool call: " + name, e);
+            });
         }
     }
 
-    private void sendNarrateCurrentPageDirective() {
-        if (webSocket == null || !setupReady || currentPageIndex >= story.pages.size()) return;
+    private synchronized void sendNarrateCurrentPageDirective() {
+        if (webSocket == null || !setupReady || currentPageIndex >= story.pages.size() || isPaused) return;
+        currentTurnSequence++;
+        final int seq = currentTurnSequence;
         try {
             StoryModel.Page page = story.pages.get(currentPageIndex);
             JSONObject clientContent = new JSONObject();
@@ -458,12 +332,16 @@ public class StoryLiveClient {
             JSONArray parts = new JSONArray();
             JSONObject part = new JSONObject();
 
-            String prompt = "【系統指令：請開始生動朗讀第 " + (currentPageIndex + 1) + " 頁】\n" +
-                    "旁白：" + page.text + "\n" +
-                    (page.dialogue != null && !page.dialogue.isEmpty() ? ("對白 (" + page.emotion + "): " + page.dialogue + "\n") : "") +
-                    "朗讀完畢後請立即呼叫 `advance_story_page` 翻到下一頁！";
+            StringBuilder sb = new StringBuilder();
+            sb.append("請以生動富有感情的童趣語氣，朗讀繪本故事《").append(story.title).append("》第 ").append(currentPageIndex + 1).append(" 頁：\n");
+            sb.append("旁白：").append(page.text).append("\n");
+            if (page.dialogue != null && !page.dialogue.trim().isEmpty()) {
+                sb.append("對白 (").append(page.characterName != null && !page.characterName.isEmpty() ? page.characterName : "角色")
+                  .append(" / ").append(page.emotion != null && !page.emotion.isEmpty() ? page.emotion : "生動").append("語氣): ")
+                  .append(page.dialogue).append("\n");
+            }
 
-            part.put("text", prompt);
+            part.put("text", sb.toString());
             parts.put(part);
             turn.put("parts", parts);
             turns.put(turn);
@@ -538,7 +416,6 @@ public class StoryLiveClient {
                             }
                         }
                     } else {
-                        checkAndExecutePendingTool();
                         try { Thread.sleep(10); } catch (InterruptedException ignored) { break; }
                     }
                 }
@@ -552,9 +429,6 @@ public class StoryLiveClient {
         currentTurnSequence++;
         audioQueue.clear();
         scheduledPlayEndTimeMs = 0;
-        pendingToolCallId = null;
-        pendingToolName = null;
-        pendingToolArgs = null;
 
         if (usingNativeOboe) {
             NativeOboeOutput.flush();
