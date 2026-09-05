@@ -222,22 +222,48 @@ public class StoryIllustrationGenerator {
         }
     }
 
+    private static final String[] FREE_MODELS = {
+            "turbo",
+            "flux",
+            "flux-anime"
+    };
+
     private static void tryPollinationsFallback(final Context context,
                                                 final String prompt,
                                                 final String lastError,
                                                 final IllustrationCallback callback) {
+        tryPollinationsModel(context, 0, prompt, lastError, callback);
+    }
+
+    private static void tryPollinationsModel(final Context context,
+                                             final int modelIdx,
+                                             final String prompt,
+                                             final String lastError,
+                                             final IllustrationCallback callback) {
+        if (modelIdx >= FREE_MODELS.length) {
+            String errDetail = (lastError != null && !lastError.isEmpty()) ? (" (" + lastError + ")") : "";
+            notifyError(callback, I18n.t(context, "免費生圖伺服器忙碌中" + errDetail + "，請稍後重試！", "Free image server busy" + errDetail + ". Please try again shortly."));
+            return;
+        }
+
+        final String model = FREE_MODELS[modelIdx];
         try {
             String encodedPrompt = java.net.URLEncoder.encode(prompt, "UTF-8");
-            String url = "https://image.pollinations.ai/prompt/" + encodedPrompt + "?width=800&height=600&nologo=true&seed=" + (System.currentTimeMillis() % 1000000);
+            long seed = (System.currentTimeMillis() + (long)(Math.random() * 10000)) % 1000000;
+            String url = "https://image.pollinations.ai/prompt/" + encodedPrompt + "?model=" + model + "&width=768&height=576&nologo=true&enhance=false&seed=" + seed;
 
             Request request = new Request.Builder()
                     .url(url)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36")
+                    .addHeader("Referer", "https://pollinations.ai/")
+                    .addHeader("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
                     .build();
 
             HTTP_CLIENT.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    notifyError(callback, I18n.t(context, "AI 繪圖生成失敗 (" + lastError + ")", "AI Image generation failed: " + lastError));
+                    Log.w(TAG, "Pollinations model " + model + " failed: " + e.getMessage());
+                    tryPollinationsModel(context, modelIdx + 1, prompt, e.getMessage(), callback);
                 }
 
                 @Override
@@ -253,17 +279,21 @@ public class StoryIllustrationGenerator {
                                 }
                             }
                         }
-                    } catch (Exception ignored) {}
-                    finally {
+                        Log.w(TAG, "Pollinations model " + model + " HTTP " + response.code());
+                    } catch (Exception e) {
+                        Log.w(TAG, "Pollinations model " + model + " error: " + e.getMessage());
+                    } finally {
                         if (response != null) {
                             try { response.close(); } catch (Exception ignored) {}
                         }
                     }
-                    notifyError(callback, I18n.t(context, "AI 繪圖生成失敗 (" + lastError + ")", "AI Image generation failed (" + lastError + ")"));
+
+                    // Fallback to next free model
+                    tryPollinationsModel(context, modelIdx + 1, prompt, "HTTP " + response.code(), callback);
                 }
             });
         } catch (Exception e) {
-            notifyError(callback, I18n.t(context, "AI 繪圖生成失敗 (" + lastError + ")", "AI Image generation failed (" + lastError + ")"));
+            tryPollinationsModel(context, modelIdx + 1, prompt, e.getMessage(), callback);
         }
     }
 
