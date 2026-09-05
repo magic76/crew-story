@@ -73,9 +73,10 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         buildUI();
         updatePageDisplay(0);
 
-        // Auto-start Live Storytelling Agent
+        // Auto-start Live Storytelling Agent & Background Playback Service
         liveClient = new StoryLiveClient(this, story, 0, this);
         liveClient.start();
+        StoryPlaybackService.start(this, story, 0);
     }
 
     @Override
@@ -405,6 +406,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         }
         liveClient = new StoryLiveClient(this, story, startPage, this);
         liveClient.start();
+        StoryPlaybackService.start(this, story, startPage);
         playPauseBtn.setText(I18n.t(this, "⏸️ 暫停說書", "⏸️ Pause"));
         ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.AMBER_400);
         playPauseBtn.setOnClickListener(new View.OnClickListener() {
@@ -436,6 +438,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     @Override
     public void onPageAdvanced(int newPageIndex, String chapterText) {
         updatePageDisplay(newPageIndex);
+        StoryPlaybackService.updateProgress(this, newPageIndex, story.pages.size());
     }
 
     @Override
@@ -449,6 +452,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
                 restartStorySession(0);
             }
         });
+        StoryPlaybackService.stop(this);
     }
 
     @Override
@@ -478,6 +482,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        StoryPlaybackService.stop(this);
         if (liveClient != null) {
             liveClient.stop();
             liveClient = null;

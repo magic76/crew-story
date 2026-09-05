@@ -8,6 +8,8 @@ import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.net.wifi.WifiManager;
 import android.util.Base64;
 import android.util.Log;
 
@@ -62,6 +64,9 @@ public class StoryLiveClient {
     private Thread micThread;
     private Thread playbackThread;
 
+    private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
+
     private final AtomicBoolean isRecording = new AtomicBoolean(false);
     private boolean usingNativeOboe = false;
     private final ConcurrentLinkedQueue<byte[]> audioQueue = new ConcurrentLinkedQueue<>();
@@ -95,6 +100,7 @@ public class StoryLiveClient {
         isFinished = false;
         notifyStatus("正在連線至 Gemini Live 說書引擎…");
 
+        acquireLocks();
         initAudioOutput();
 
         String url = "wss://" + LIVE_HOST + LIVE_PATH + "?key=" + apiKey.trim();
@@ -530,6 +536,47 @@ public class StoryLiveClient {
             try { webSocket.close(1000, "User stopped"); } catch (Exception ignored) {}
             webSocket = null;
         }
+        releaseLocks();
+    }
+
+    private void acquireLocks() {
+        try {
+            PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+            if (pm != null && wakeLock == null) {
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CrewStory:LiveClientWakeLock");
+                wakeLock.setReferenceCounted(false);
+                wakeLock.acquire(4 * 60 * 60 * 1000L);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to acquire WakeLock in LiveClient", e);
+        }
+
+        try {
+            WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm != null && wifiLock == null) {
+                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "CrewStory:LiveClientWifiLock");
+                wifiLock.setReferenceCounted(false);
+                wifiLock.acquire();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to acquire WifiLock in LiveClient", e);
+        }
+    }
+
+    private void releaseLocks() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            if (wifiLock != null && wifiLock.isHeld()) {
+                wifiLock.release();
+                wifiLock = null;
+            }
+        } catch (Exception ignored) {}
     }
 
     private void notifyConnected() {
