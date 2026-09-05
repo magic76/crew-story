@@ -28,6 +28,8 @@ public class AppConfig {
             "Puck", "Charon", "Fenrir", "Orus", "Zephyr", "Enceladus", "Iapetus", "Umbriel", "Algenib", "Rasalgethi", "Alnilam", "Schedar", "Gacrux", "Zubenelgenubi", "Sadaltager"
     };
 
+    public static final String KEY_IMAGEN_UNAVAILABLE = "imagen_unavailable";
+
     public static SharedPreferences getPrefs(Context context) {
         return context.getApplicationContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
@@ -49,7 +51,20 @@ public class AppConfig {
 
     public static void setGeminiApiKey(Context context, String key) {
         if (context == null) return;
-        getPrefs(context).edit().putString(KEY_GEMINI_API_KEY, key != null ? key.trim() : "").apply();
+        getPrefs(context).edit()
+                .putString(KEY_GEMINI_API_KEY, key != null ? key.trim() : "")
+                .putBoolean(KEY_IMAGEN_UNAVAILABLE, false)
+                .apply();
+    }
+
+    public static boolean isImagenUnavailable(Context context) {
+        if (context == null) return false;
+        return getPrefs(context).getBoolean(KEY_IMAGEN_UNAVAILABLE, false);
+    }
+
+    public static void setImagenUnavailable(Context context, boolean unavailable) {
+        if (context == null) return;
+        getPrefs(context).edit().putBoolean(KEY_IMAGEN_UNAVAILABLE, unavailable).apply();
     }
 
     public static String getUiLanguage(Context context) {

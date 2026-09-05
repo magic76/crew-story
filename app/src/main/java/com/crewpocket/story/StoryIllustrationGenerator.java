@@ -82,6 +82,16 @@ public class StoryIllustrationGenerator {
     public static void generateIllustration(final Context context,
                                            final String prompt,
                                            final IllustrationCallback callback) {
+        if (AppConfig.isImagenUnavailable(context)) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    tryPollinationsFallback(context, prompt, "Free tier", callback);
+                }
+            }).start();
+            return;
+        }
+
         final String apiKey = AppConfig.getGeminiApiKey(context);
         if (apiKey == null || apiKey.trim().isEmpty()) {
             notifyError(callback, I18n.t(context, "請先至設定填寫 Gemini API Key！", "Please enter Gemini API Key in Settings!"));
@@ -102,9 +112,7 @@ public class StoryIllustrationGenerator {
                                        final String prompt,
                                        final String lastError,
                                        final IllustrationCallback callback) {
-        if (modelIdx >= IMAGEN_MODELS.length) {
-            // Automatic fallback to high-quality storybook illustration engine (Flux / SDXL)
-            // for free-tier Gemini API keys that don't have Google Cloud Billing linked.
+        if (modelIdx >= IMAGEN_MODELS.length || AppConfig.isImagenUnavailable(context)) {
             tryPollinationsFallback(context, prompt, lastError, callback);
             return;
         }
@@ -168,6 +176,13 @@ public class StoryIllustrationGenerator {
                                     }
                                 }
                             }
+                        }
+
+                        if (response.code() == 404 || response.code() == 403) {
+                            // Free-tier key or unbilled project -> mark unavailable and directly fallback
+                            AppConfig.setImagenUnavailable(context, true);
+                            tryPollinationsFallback(context, prompt, "Free tier key", callback);
+                            return;
                         }
 
                         if (!resStr.isEmpty()) {

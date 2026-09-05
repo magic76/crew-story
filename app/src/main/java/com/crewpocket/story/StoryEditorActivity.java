@@ -332,10 +332,10 @@ public class StoryEditorActivity extends Activity {
 
             // Move Up
             if (pageIdx > 0) {
-                Button upBtn = new Button(this);
+                TextView upBtn = new TextView(this);
                 upBtn.setText("⬆️");
-                upBtn.setTextSize(11);
-                upBtn.setTextColor(Color.WHITE);
+                upBtn.setTextSize(14);
+                upBtn.setGravity(Gravity.CENTER);
                 upBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
                 upBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -345,16 +345,16 @@ public class StoryEditorActivity extends Activity {
                     }
                 });
                 LinearLayout.LayoutParams uLp = new LinearLayout.LayoutParams(dp(36), dp(32));
-                uLp.setMargins(0, 0, dp(4), 0);
+                uLp.setMargins(0, 0, dp(6), 0);
                 pHeader.addView(upBtn, uLp);
             }
 
             // Move Down
             if (pageIdx < story.pages.size() - 1) {
-                Button downBtn = new Button(this);
+                TextView downBtn = new TextView(this);
                 downBtn.setText("⬇️");
-                downBtn.setTextSize(11);
-                downBtn.setTextColor(Color.WHITE);
+                downBtn.setTextSize(14);
+                downBtn.setGravity(Gravity.CENTER);
                 downBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
                 downBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -364,17 +364,17 @@ public class StoryEditorActivity extends Activity {
                     }
                 });
                 LinearLayout.LayoutParams dLp = new LinearLayout.LayoutParams(dp(36), dp(32));
-                dLp.setMargins(0, 0, dp(4), 0);
+                dLp.setMargins(0, 0, dp(6), 0);
                 pHeader.addView(downBtn, dLp);
             }
 
             // Delete Page
             if (story.pages.size() > 1) {
-                Button delBtn = new Button(this);
+                TextView delBtn = new TextView(this);
                 delBtn.setText("🗑️");
-                delBtn.setTextSize(11);
-                delBtn.setTextColor(Color.RED);
-                delBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
+                delBtn.setTextSize(14);
+                delBtn.setGravity(Gravity.CENTER);
+                delBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#3B1E1E"), Color.parseColor("#7F1D1D"), 8));
                 delBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         new AlertDialog.Builder(StoryEditorActivity.this)
@@ -424,6 +424,8 @@ public class StoryEditorActivity extends Activity {
                 changeImgBtn.setText(I18n.t(this, "📷 相簿", "📷 Gallery"));
                 changeImgBtn.setTextSize(11);
                 changeImgBtn.setTextColor(Color.WHITE);
+                changeImgBtn.setPadding(0, 0, 0, 0);
+                changeImgBtn.setGravity(Gravity.CENTER);
                 changeImgBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
                 changeImgBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -440,6 +442,8 @@ public class StoryEditorActivity extends Activity {
                 regenAiBtn.setTextSize(11);
                 regenAiBtn.setTextColor(CrewTheme.AMBER_400);
                 regenAiBtn.setTypeface(Typeface.DEFAULT_BOLD);
+                regenAiBtn.setPadding(0, 0, 0, 0);
+                regenAiBtn.setGravity(Gravity.CENTER);
                 regenAiBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 8));
                 regenAiBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -454,6 +458,8 @@ public class StoryEditorActivity extends Activity {
                 removeImgBtn.setText(I18n.t(this, "❌ 移除", "❌ Remove"));
                 removeImgBtn.setTextSize(11);
                 removeImgBtn.setTextColor(Color.parseColor("#F87171"));
+                removeImgBtn.setPadding(0, 0, 0, 0);
+                removeImgBtn.setGravity(Gravity.CENTER);
                 removeImgBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
                 removeImgBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -476,6 +482,7 @@ public class StoryEditorActivity extends Activity {
                 pickImgBtn.setTextColor(CrewTheme.SKY_400);
                 pickImgBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), Color.parseColor("#334155"), 10));
                 pickImgBtn.setPadding(0, dp(10), 0, dp(10));
+                pickImgBtn.setGravity(Gravity.CENTER);
                 pickImgBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         pickingImagePageIndex = pageIdx;
@@ -493,6 +500,7 @@ public class StoryEditorActivity extends Activity {
                 genAiBtn.setTypeface(Typeface.DEFAULT_BOLD);
                 genAiBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 10));
                 genAiBtn.setPadding(0, dp(10), 0, dp(10));
+                genAiBtn.setGravity(Gravity.CENTER);
                 genAiBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         showAiIllustrationDialog(pageIdx);
