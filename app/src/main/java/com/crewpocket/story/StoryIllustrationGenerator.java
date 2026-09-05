@@ -202,7 +202,15 @@ public class StoryIllustrationGenerator {
                                 if (content != null) {
                                     JSONArray cParts = content.optJSONArray("parts");
                                     if (cParts != null && cParts.length() > 0) {
-                                        String rawPrompt = cParts.getJSONObject(0).optString("text", "").trim();
+                                        StringBuilder fullPromptBuilder = new StringBuilder();
+                                        for (int pIdx = 0; pIdx < cParts.length(); pIdx++) {
+                                            JSONObject partObj = cParts.optJSONObject(pIdx);
+                                            if (partObj != null) {
+                                                String pText = partObj.optString("text", "");
+                                                fullPromptBuilder.append(pText);
+                                            }
+                                        }
+                                        String rawPrompt = fullPromptBuilder.toString().trim();
                                         if (!rawPrompt.isEmpty()) {
                                             // Clean up any extra quotes or markdown fences
                                             rawPrompt = rawPrompt.replaceAll("^```.*\\n?", "").replaceAll("\\n?```$", "").trim();

@@ -739,8 +739,8 @@ public class StoryEditorActivity extends Activity {
         promptInput.setTextColor(Color.WHITE);
         promptInput.setHintTextColor(CrewTheme.TEXT_MUTED);
         promptInput.setTextSize(12);
-        promptInput.setMinLines(3);
-        promptInput.setMaxLines(6);
+        promptInput.setMinLines(4);
+        promptInput.setMaxLines(10);
         promptInput.setGravity(Gravity.TOP);
         promptInput.setPadding(dp(12), dp(10), dp(12), dp(10));
         promptInput.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), CrewTheme.BORDER_DEFAULT, 10));
