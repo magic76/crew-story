@@ -366,20 +366,13 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         // Load illustration if present
         if (p.imageUri != null && !p.imageUri.isEmpty()) {
-            try {
-                Uri uri = Uri.parse(p.imageUri);
-                InputStream is = getContentResolver().openInputStream(uri);
-                if (is != null) {
-                    Bitmap bmp = BitmapFactory.decodeStream(is);
-                    is.close();
-                    if (bmp != null) {
-                        pageImageView.setImageBitmap(bmp);
-                        pageImageView.setVisibility(View.VISIBLE);
-                        imagePlaceholder.setVisibility(View.GONE);
-                        return;
-                    }
-                }
-            } catch (Exception ignored) {}
+            Bitmap bmp = StoryIllustrationGenerator.loadBitmapSafely(this, p.imageUri);
+            if (bmp != null) {
+                pageImageView.setImageBitmap(bmp);
+                pageImageView.setVisibility(View.VISIBLE);
+                imagePlaceholder.setVisibility(View.GONE);
+                return;
+            }
         }
 
         // If no image, show elegant book placeholder

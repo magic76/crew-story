@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -18,6 +19,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -197,13 +199,32 @@ public class StoryEditorActivity extends Activity {
         content.addView(metaCard);
 
         // ── Card 2: Chapter Pages List ──
+        LinearLayout pagesHeaderRow = new LinearLayout(this);
+        pagesHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        pagesHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        pagesHeaderRow.setPadding(0, dp(6), 0, dp(8));
+
         TextView pagesHeader = new TextView(this);
-        pagesHeader.setText(I18n.t(this, "🎨 繪本跨頁內容與插圖 (Chapters & Pages)", "🎨 Chapters & Illustrations"));
+        pagesHeader.setText(I18n.t(this, "🎨 繪本跨頁內容與插圖", "🎨 Chapters & Illustrations"));
         pagesHeader.setTextColor(Color.WHITE);
         pagesHeader.setTextSize(15);
         pagesHeader.setTypeface(Typeface.DEFAULT_BOLD);
-        pagesHeader.setPadding(0, dp(6), 0, dp(8));
-        content.addView(pagesHeader);
+        pagesHeaderRow.addView(pagesHeader, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        Button batchAiBtn = new Button(this);
+        batchAiBtn.setText(I18n.t(this, "🪄 批次 AI 配圖", "🪄 Batch AI Art"));
+        batchAiBtn.setTextSize(11);
+        batchAiBtn.setTextColor(CrewTheme.AMBER_400);
+        batchAiBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        batchAiBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 8));
+        batchAiBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+        batchAiBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                autoGenerateMissingIllustrations();
+            }
+        });
+        pagesHeaderRow.addView(batchAiBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)));
+        content.addView(pagesHeaderRow);
 
         pagesContainer = new LinearLayout(this);
         pagesContainer.setOrientation(LinearLayout.VERTICAL);
@@ -381,12 +402,17 @@ public class StoryEditorActivity extends Activity {
 
             if (p.imageUri != null && !p.imageUri.isEmpty()) {
                 ImageView iv = new ImageView(this);
-                try {
-                    iv.setImageURI(Uri.parse(p.imageUri));
-                } catch (Exception ignored) {}
+                Bitmap bmp = StoryIllustrationGenerator.loadBitmapSafely(this, p.imageUri);
+                if (bmp != null) {
+                    iv.setImageBitmap(bmp);
+                } else {
+                    try {
+                        iv.setImageURI(Uri.parse(p.imageUri));
+                    } catch (Exception ignored) {}
+                }
                 iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 iv.setBackground(CrewTheme.createCard(this, Color.BLACK, CrewTheme.BORDER_DEFAULT, 10));
-                LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(140));
+                LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150));
                 iv.setLayoutParams(ivLp);
                 imgBox.addView(iv);
 
@@ -395,7 +421,7 @@ public class StoryEditorActivity extends Activity {
                 imgActionRow.setPadding(0, dp(6), 0, 0);
 
                 Button changeImgBtn = new Button(this);
-                changeImgBtn.setText(I18n.t(this, "📷 更換插圖", "📷 Change Image"));
+                changeImgBtn.setText(I18n.t(this, "📷 相簿", "📷 Gallery"));
                 changeImgBtn.setTextSize(11);
                 changeImgBtn.setTextColor(Color.WHITE);
                 changeImgBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
@@ -409,8 +435,23 @@ public class StoryEditorActivity extends Activity {
                 });
                 imgActionRow.addView(changeImgBtn, new LinearLayout.LayoutParams(0, dp(34), 1f));
 
+                Button regenAiBtn = new Button(this);
+                regenAiBtn.setText(I18n.t(this, "🎨 AI 重繪", "🎨 AI Redraw"));
+                regenAiBtn.setTextSize(11);
+                regenAiBtn.setTextColor(CrewTheme.AMBER_400);
+                regenAiBtn.setTypeface(Typeface.DEFAULT_BOLD);
+                regenAiBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 8));
+                regenAiBtn.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        showAiIllustrationDialog(pageIdx);
+                    }
+                });
+                LinearLayout.LayoutParams raLp = new LinearLayout.LayoutParams(0, dp(34), 1.2f);
+                raLp.setMargins(dp(6), 0, 0, 0);
+                imgActionRow.addView(regenAiBtn, raLp);
+
                 Button removeImgBtn = new Button(this);
-                removeImgBtn.setText(I18n.t(this, "❌ 移除插圖", "❌ Remove"));
+                removeImgBtn.setText(I18n.t(this, "❌ 移除", "❌ Remove"));
                 removeImgBtn.setTextSize(11);
                 removeImgBtn.setTextColor(Color.parseColor("#F87171"));
                 removeImgBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
@@ -421,17 +462,20 @@ public class StoryEditorActivity extends Activity {
                     }
                 });
                 LinearLayout.LayoutParams rmBgLp = new LinearLayout.LayoutParams(0, dp(34), 1f);
-                rmBgLp.setMargins(dp(8), 0, 0, 0);
+                rmBgLp.setMargins(dp(6), 0, 0, 0);
                 imgActionRow.addView(removeImgBtn, rmBgLp);
 
                 imgBox.addView(imgActionRow);
             } else {
+                LinearLayout emptyPickRow = new LinearLayout(this);
+                emptyPickRow.setOrientation(LinearLayout.HORIZONTAL);
+
                 Button pickImgBtn = new Button(this);
-                pickImgBtn.setText(I18n.t(this, "📷 點擊為本頁添加插圖 / 照片", "📷 Tap to Add Page Illustration"));
+                pickImgBtn.setText(I18n.t(this, "📷 相簿選圖", "📷 Gallery"));
                 pickImgBtn.setTextSize(12);
                 pickImgBtn.setTextColor(CrewTheme.SKY_400);
                 pickImgBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), Color.parseColor("#334155"), 10));
-                pickImgBtn.setPadding(0, dp(12), 0, dp(12));
+                pickImgBtn.setPadding(0, dp(10), 0, dp(10));
                 pickImgBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         pickingImagePageIndex = pageIdx;
@@ -440,7 +484,25 @@ public class StoryEditorActivity extends Activity {
                         startActivityForResult(Intent.createChooser(intent, I18n.t(StoryEditorActivity.this, "選擇插圖", "Pick Image")), REQUEST_PICK_PAGE_IMAGE);
                     }
                 });
-                imgBox.addView(pickImgBtn);
+                emptyPickRow.addView(pickImgBtn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+                Button genAiBtn = new Button(this);
+                genAiBtn.setText(I18n.t(this, "🎨 AI 生成插圖", "🎨 AI Illustration"));
+                genAiBtn.setTextSize(12);
+                genAiBtn.setTextColor(CrewTheme.AMBER_400);
+                genAiBtn.setTypeface(Typeface.DEFAULT_BOLD);
+                genAiBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 10));
+                genAiBtn.setPadding(0, dp(10), 0, dp(10));
+                genAiBtn.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        showAiIllustrationDialog(pageIdx);
+                    }
+                });
+                LinearLayout.LayoutParams gaLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.2f);
+                gaLp.setMargins(dp(8), 0, 0, 0);
+                emptyPickRow.addView(genAiBtn, gaLp);
+
+                imgBox.addView(emptyPickRow);
             }
             pCard.addView(imgBox);
 
@@ -560,5 +622,271 @@ public class StoryEditorActivity extends Activity {
             }
             pickingImagePageIndex = -1;
         }
+    }
+
+    private void showAiIllustrationDialog(final int pageIdx) {
+        if (pageIdx < 0 || pageIdx >= story.pages.size()) return;
+        final StoryModel.Page p = story.pages.get(pageIdx);
+
+        String apiKey = AppConfig.getGeminiApiKey(this);
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            Toast.makeText(this, I18n.t(this, "請先至設定填寫 Gemini API Key！", "Please set your Gemini API Key in Settings!"), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(20), dp(18), dp(20), dp(18));
+        layout.setBackgroundColor(CrewTheme.BG_SURFACE);
+
+        TextView title = new TextView(this);
+        title.setText(I18n.t(this, "🎨 AI 生成繪本插圖 (Imagen 3)", "🎨 AI Generate Illustration"));
+        title.setTextColor(CrewTheme.AMBER_400);
+        title.setTextSize(16);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        layout.addView(title);
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText(I18n.t(this, "選擇風格或微調提示詞，由 Google Imagen 3 為第 " + (pageIdx + 1) + " 頁彩繪插圖：", "Select style and prompt for Page " + (pageIdx + 1) + ":"));
+        subtitle.setTextColor(CrewTheme.TEXT_MUTED);
+        subtitle.setTextSize(12);
+        subtitle.setPadding(0, dp(4), 0, dp(12));
+        layout.addView(subtitle);
+
+        // Style Selector Horizontal Scroll
+        TextView styleLabel = new TextView(this);
+        styleLabel.setText(I18n.t(this, "✨ 藝術風格：", "✨ Art Style:"));
+        styleLabel.setTextColor(Color.WHITE);
+        styleLabel.setTextSize(12);
+        styleLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        styleLabel.setPadding(0, 0, 0, dp(6));
+        layout.addView(styleLabel);
+
+        final String[] styleKeys = {
+                StoryIllustrationGenerator.STYLE_WATERCOLOR,
+                StoryIllustrationGenerator.STYLE_3D,
+                StoryIllustrationGenerator.STYLE_CRAYON,
+                StoryIllustrationGenerator.STYLE_CLASSIC,
+                StoryIllustrationGenerator.STYLE_ANIME
+        };
+        final String[] styleNames = {
+                I18n.t(this, "🎨 溫馨水彩", "🎨 Watercolor"),
+                I18n.t(this, "🧸 3D 動畫", "🧸 3D Cartoon"),
+                I18n.t(this, "🖍️ 童趣蠟筆", "🖍️ Crayon"),
+                I18n.t(this, "🏰 復古繪本", "🏰 Classic"),
+                I18n.t(this, "🌸 夢幻動漫", "🌸 Anime")
+        };
+
+        final String[] selectedStyle = {StoryIllustrationGenerator.STYLE_WATERCOLOR};
+        final Button[] styleBtns = new Button[styleKeys.length];
+
+        HorizontalScrollView styleScroll = new HorizontalScrollView(this);
+        styleScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout styleRow = new LinearLayout(this);
+        styleRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        final EditText promptInput = new EditText(this);
+
+        for (int i = 0; i < styleKeys.length; i++) {
+            final int idx = i;
+            final String sk = styleKeys[i];
+            final Button sb = new Button(this);
+            sb.setText(styleNames[i]);
+            sb.setTextSize(11);
+            sb.setSingleLine(true);
+            sb.setPadding(dp(12), 0, dp(12), 0);
+            boolean isSel = idx == 0;
+            sb.setTextColor(isSel ? CrewTheme.AMBER_400 : Color.WHITE);
+            sb.setTypeface(isSel ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            sb.setBackground(CrewTheme.createCard(this, Color.parseColor(isSel ? "#1E293B" : "#0F172A"), isSel ? CrewTheme.AMBER_400 : CrewTheme.BORDER_DEFAULT, 8));
+
+            sb.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    selectedStyle[0] = sk;
+                    for (int j = 0; j < styleBtns.length; j++) {
+                        boolean sel = (j == idx);
+                        styleBtns[j].setTextColor(sel ? CrewTheme.AMBER_400 : Color.WHITE);
+                        styleBtns[j].setTypeface(sel ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+                        styleBtns[j].setBackground(CrewTheme.createCard(StoryEditorActivity.this, Color.parseColor(sel ? "#1E293B" : "#0F172A"), sel ? CrewTheme.AMBER_400 : CrewTheme.BORDER_DEFAULT, 8));
+                    }
+                    promptInput.setText(StoryIllustrationGenerator.buildPrompt(story.title, p.text, sk));
+                }
+            });
+
+            styleBtns[i] = sb;
+            LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
+            if (i > 0) sbLp.setMargins(dp(6), 0, 0, 0);
+            styleRow.addView(sb, sbLp);
+        }
+        styleScroll.addView(styleRow);
+        layout.addView(styleScroll);
+
+        // Prompt edit
+        TextView promptLabel = new TextView(this);
+        promptLabel.setText(I18n.t(this, "📝 提示詞 (可自由微調)：", "📝 Prompt (Editable):"));
+        promptLabel.setTextColor(Color.WHITE);
+        promptLabel.setTextSize(12);
+        promptLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        promptLabel.setPadding(0, dp(12), 0, dp(6));
+        layout.addView(promptLabel);
+
+        promptInput.setText(StoryIllustrationGenerator.buildPrompt(story.title, p.text, selectedStyle[0]));
+        promptInput.setTextColor(Color.WHITE);
+        promptInput.setHintTextColor(CrewTheme.TEXT_MUTED);
+        promptInput.setTextSize(12);
+        promptInput.setMinLines(3);
+        promptInput.setMaxLines(5);
+        promptInput.setGravity(Gravity.TOP);
+        promptInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        promptInput.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), CrewTheme.BORDER_DEFAULT, 10));
+        layout.addView(promptInput);
+
+        // Progress indicator container
+        final LinearLayout progressBox = new LinearLayout(this);
+        progressBox.setOrientation(LinearLayout.HORIZONTAL);
+        progressBox.setGravity(Gravity.CENTER_VERTICAL);
+        progressBox.setPadding(0, dp(12), 0, 0);
+        progressBox.setVisibility(View.GONE);
+
+        android.widget.ProgressBar pb = new android.widget.ProgressBar(this);
+        progressBox.addView(pb, new LinearLayout.LayoutParams(dp(24), dp(24)));
+
+        TextView progressTxt = new TextView(this);
+        progressTxt.setText(I18n.t(this, " 🎨 Google Imagen 3 正在彩繪插圖中...", " 🎨 Imagen 3 drawing illustration..."));
+        progressTxt.setTextColor(CrewTheme.AMBER_400);
+        progressTxt.setTextSize(12);
+        progressTxt.setPadding(dp(8), 0, 0, 0);
+        progressBox.addView(progressTxt);
+        layout.addView(progressBox);
+
+        // Action Buttons
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(16), 0, 0);
+
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+
+        final Button cancelBtn = new Button(this);
+        cancelBtn.setText(I18n.t(this, "取消", "Cancel"));
+        cancelBtn.setTextColor(Color.WHITE);
+        cancelBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1F2937"), CrewTheme.BORDER_DEFAULT, 10));
+        cancelBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (dialogHolder[0] != null) dialogHolder[0].dismiss();
+            }
+        });
+        actions.addView(cancelBtn, new LinearLayout.LayoutParams(0, dp(44), 1f));
+
+        final Button genBtn = new Button(this);
+        genBtn.setText(I18n.t(this, "✨ 開始生成插圖", "✨ Generate"));
+        genBtn.setTextColor(Color.BLACK);
+        genBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable gBg = new GradientDrawable();
+        gBg.setColor(CrewTheme.AMBER_400);
+        gBg.setCornerRadius(dp(10));
+        genBtn.setBackground(gBg);
+        LinearLayout.LayoutParams gLp = new LinearLayout.LayoutParams(0, dp(44), 1.5f);
+        gLp.setMargins(dp(10), 0, 0, 0);
+        genBtn.setLayoutParams(gLp);
+
+        genBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String prompt = promptInput.getText().toString().trim();
+                if (prompt.isEmpty()) {
+                    Toast.makeText(StoryEditorActivity.this, I18n.t(StoryEditorActivity.this, "提示詞不能為空！", "Prompt cannot be empty!"), Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                genBtn.setEnabled(false);
+                cancelBtn.setEnabled(false);
+                progressBox.setVisibility(View.VISIBLE);
+
+                StoryIllustrationGenerator.generateIllustration(StoryEditorActivity.this, prompt, new StoryIllustrationGenerator.IllustrationCallback() {
+                    @Override
+                    public void onSuccess(String imageUri) {
+                        if (dialogHolder[0] != null) dialogHolder[0].dismiss();
+                        p.imageUri = imageUri;
+                        renderPagesList();
+                        Toast.makeText(StoryEditorActivity.this, I18n.t(StoryEditorActivity.this, "🎉 第 " + (pageIdx + 1) + " 頁插圖生成成功！", "🎉 Page " + (pageIdx + 1) + " illustration created!"), Toast.LENGTH_SHORT).show();
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        genBtn.setEnabled(true);
+                        cancelBtn.setEnabled(true);
+                        progressBox.setVisibility(View.GONE);
+                        Toast.makeText(StoryEditorActivity.this, error, Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
+
+        actions.addView(genBtn);
+        layout.addView(actions);
+
+        builder.setView(layout);
+        dialogHolder[0] = builder.create();
+        dialogHolder[0].show();
+    }
+
+    private void autoGenerateMissingIllustrations() {
+        final List<Integer> missingIndices = new ArrayList<>();
+        for (int i = 0; i < story.pages.size(); i++) {
+            StoryModel.Page p = story.pages.get(i);
+            if (p.imageUri == null || p.imageUri.trim().isEmpty()) {
+                missingIndices.add(i);
+            }
+        }
+
+        if (missingIndices.isEmpty()) {
+            Toast.makeText(this, I18n.t(this, "所有頁面皆已有插圖！", "All pages already have illustrations!"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String apiKey = AppConfig.getGeminiApiKey(this);
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            Toast.makeText(this, I18n.t(this, "請先至設定填寫 Gemini API Key！", "Please set your Gemini API Key in Settings!"), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(I18n.t(this, "🪄 批次 AI 生成插圖", "🪄 Batch AI Illustration"))
+                .setMessage(I18n.t(this, "即將為 " + missingIndices.size() + " 個尚未配圖的跨頁依序生成水彩插圖，是否開始？", "Generate illustrations for " + missingIndices.size() + " pages without image?"))
+                .setPositiveButton(I18n.t(this, "開始生成", "Start"), new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dialog, int which) {
+                        generateNextMissingIllustration(missingIndices, 0);
+                    }
+                })
+                .setNegativeButton(I18n.t(this, "取消", "Cancel"), null)
+                .show();
+    }
+
+    private void generateNextMissingIllustration(final List<Integer> indices, final int currentPos) {
+        if (currentPos >= indices.size()) {
+            Toast.makeText(this, I18n.t(this, "🎉 全部缺圖頁面插圖已生成完成！", "🎉 All illustrations completed!"), Toast.LENGTH_SHORT).show();
+            renderPagesList();
+            return;
+        }
+
+        final int pageIdx = indices.get(currentPos);
+        final StoryModel.Page p = story.pages.get(pageIdx);
+        Toast.makeText(this, I18n.t(this, "🎨 正在生成第 " + (pageIdx + 1) + " 頁插圖 (" + (currentPos + 1) + "/" + indices.size() + ")...", "Drawing illustration for page " + (pageIdx + 1) + "..."), Toast.LENGTH_SHORT).show();
+
+        String prompt = StoryIllustrationGenerator.buildPrompt(story.title, p.text, StoryIllustrationGenerator.STYLE_WATERCOLOR);
+        StoryIllustrationGenerator.generateIllustration(this, prompt, new StoryIllustrationGenerator.IllustrationCallback() {
+            @Override
+            public void onSuccess(String imageUri) {
+                p.imageUri = imageUri;
+                renderPagesList();
+                generateNextMissingIllustration(indices, currentPos + 1);
+            }
+
+            @Override
+            public void onError(String error) {
+                Toast.makeText(StoryEditorActivity.this, "第 " + (pageIdx + 1) + " 頁生成失敗: " + error, Toast.LENGTH_SHORT).show();
+                generateNextMissingIllustration(indices, currentPos + 1);
+            }
+        });
     }
 }
