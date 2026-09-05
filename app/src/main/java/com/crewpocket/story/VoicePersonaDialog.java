@@ -96,8 +96,69 @@ public class VoicePersonaDialog {
         return "🎙️ " + voiceName;
     }
 
-    private static String currentPlayingVoice = null;
-    private static Button currentPlayingBtn = null;
+    private static void playAudition(final Context context, final VoiceInfo voice) {
+        if (voice == null) return;
+        if (previewTts == null) {
+            previewTts = new TextToSpeech(context.getApplicationContext(), new TextToSpeech.OnInitListener() {
+                @Override public void onInit(int status) {
+                    if (status == TextToSpeech.SUCCESS) {
+                        speakVoiceSample(context, voice);
+                    }
+                }
+            });
+        } else {
+            speakVoiceSample(context, voice);
+        }
+    }
+
+    private static void speakVoiceSample(Context context, VoiceInfo voice) {
+        if (previewTts == null || voice == null) return;
+        try {
+            previewTts.stop();
+            boolean isFemale = voice.isFemale;
+            boolean isEng = I18n.isEnglish(context);
+
+            // 1. Try to match system TTS Voice by gender & language
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    java.util.Set<android.speech.tts.Voice> voices = previewTts.getVoices();
+                    if (voices != null) {
+                        String targetLang = isEng ? "en" : "zh";
+                        for (android.speech.tts.Voice v : voices) {
+                            if (v.getLocale() != null && v.getLocale().getLanguage().startsWith(targetLang)) {
+                                String vName = v.getName().toLowerCase();
+                                boolean isMaleVoice = vName.contains("male") || vName.contains("man") || vName.contains("boy") || vName.contains("ctd") || vName.contains("ccd") || vName.contains("tpm") || vName.contains("rjm");
+                                boolean isFemaleVoice = vName.contains("female") || vName.contains("woman") || vName.contains("girl") || vName.contains("ctc") || vName.contains("ccc") || vName.contains("tpf") || vName.contains("rjs");
+
+                                if (!isFemale && isMaleVoice) {
+                                    previewTts.setVoice(v);
+                                    break;
+                                } else if (isFemale && isFemaleVoice) {
+                                    previewTts.setVoice(v);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            // 2. Set clear resonant pitch curve for male vs female
+            float basePitch = isFemale ? 1.25f : 0.60f;
+            // Modulate slightly based on voice personality
+            float customPitch = (voice.pitch - 1.0f) * 0.4f + basePitch;
+            previewTts.setPitch(Math.max(0.50f, Math.min(1.50f, customPitch)));
+            previewTts.setSpeechRate(isFemale ? 1.02f : 0.95f);
+
+            if (isEng) {
+                previewTts.setLanguage(Locale.US);
+                previewTts.speak("Hello! I am " + voice.name + ", your picture book storyteller. Let's read wonderful stories together!", TextToSpeech.QUEUE_FLUSH, null, "sample_" + voice.name);
+            } else {
+                previewTts.setLanguage(Locale.TRADITIONAL_CHINESE);
+                previewTts.speak("你好！我是 " + voice.name + "，你的繪本說書人，今天想聽什麼精彩的故事呢？", TextToSpeech.QUEUE_FLUSH, null, "sample_" + voice.name);
+            }
+        } catch (Exception ignored) {}
+    }
 
     public static void show(final Context context, final Runnable onVoiceSelected) {
         final boolean en = I18n.isEnglish(context);
@@ -200,77 +261,21 @@ public class VoicePersonaDialog {
 
                     // Audition Button
                     final Button previewBtn = new Button(context);
-                    final boolean isThisPlaying = voice.name.equalsIgnoreCase(currentPlayingVoice);
-                    previewBtn.setText(isThisPlaying ? ("🔊 " + (en ? "Playing" : "試聽中")) : ("▶️ " + (en ? "Play" : "試聽")));
+                    previewBtn.setText("▶️ " + (en ? "Play" : "試聽"));
                     previewBtn.setTextSize(11);
-                    previewBtn.setTextColor(isThisPlaying ? CrewTheme.AMBER_400 : Color.WHITE);
+                    previewBtn.setTextColor(Color.WHITE);
                     previewBtn.setTypeface(Typeface.DEFAULT_BOLD);
                     previewBtn.setAllCaps(false);
                     GradientDrawable pBg = new GradientDrawable();
                     pBg.setColor(Color.parseColor("#1E293B"));
                     pBg.setCornerRadius(dp8);
-                    pBg.setStroke(dp(context, 1), isThisPlaying ? CrewTheme.AMBER_400 : Color.parseColor("#475569"));
+                    pBg.setStroke(dp(context, 1), Color.parseColor("#475569"));
                     previewBtn.setBackground(pBg);
                     previewBtn.setPadding(dp8, dp4, dp8, dp4);
-                    if (isThisPlaying) {
-                        currentPlayingBtn = previewBtn;
-                    }
 
                     previewBtn.setOnClickListener(new View.OnClickListener() {
                         @Override public void onClick(View v) {
-                            if (voice.name.equalsIgnoreCase(currentPlayingVoice)) {
-                                VoicePreviewHelper.stopPreview();
-                                currentPlayingVoice = null;
-                                currentPlayingBtn = null;
-                                previewBtn.setText("▶️ " + (en ? "Play" : "試聽"));
-                                previewBtn.setTextColor(Color.WHITE);
-                                return;
-                            }
-
-                            if (currentPlayingBtn != null) {
-                                currentPlayingBtn.setText("▶️ " + (en ? "Play" : "試聽"));
-                                currentPlayingBtn.setTextColor(Color.WHITE);
-                            }
-
-                            currentPlayingVoice = voice.name;
-                            currentPlayingBtn = previewBtn;
-                            previewBtn.setText("⏳ " + (en ? "..." : "連線中"));
-                            previewBtn.setTextColor(CrewTheme.AMBER_400);
-
-                            VoicePreviewHelper.previewVoice(context, voice.name, new VoicePreviewHelper.PreviewCallback() {
-                                @Override
-                                public void onStart() {
-                                    if (voice.name.equalsIgnoreCase(currentPlayingVoice) && currentPlayingBtn != null) {
-                                        currentPlayingBtn.setText("🔊 " + (en ? "Playing" : "試聽中"));
-                                        currentPlayingBtn.setTextColor(CrewTheme.AMBER_400);
-                                    }
-                                }
-
-                                @Override
-                                public void onDone() {
-                                    if (voice.name.equalsIgnoreCase(currentPlayingVoice)) {
-                                        if (currentPlayingBtn != null) {
-                                            currentPlayingBtn.setText("▶️ " + (en ? "Play" : "試聽"));
-                                            currentPlayingBtn.setTextColor(Color.WHITE);
-                                        }
-                                        currentPlayingVoice = null;
-                                        currentPlayingBtn = null;
-                                    }
-                                }
-
-                                @Override
-                                public void onError(String msg) {
-                                    if (voice.name.equalsIgnoreCase(currentPlayingVoice)) {
-                                        if (currentPlayingBtn != null) {
-                                            currentPlayingBtn.setText("▶️ " + (en ? "Play" : "試聽"));
-                                            currentPlayingBtn.setTextColor(Color.WHITE);
-                                        }
-                                        currentPlayingVoice = null;
-                                        currentPlayingBtn = null;
-                                    }
-                                    Toast.makeText(context, (en ? "Audition failed: " : "試聽失敗：") + msg, Toast.LENGTH_SHORT).show();
-                                }
-                            });
+                            playAudition(context, voice);
                         }
                     });
                     itemCard.addView(previewBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(context, 34)));
@@ -278,9 +283,9 @@ public class VoicePersonaDialog {
                     // Click item to select
                     itemCard.setOnClickListener(new View.OnClickListener() {
                         @Override public void onClick(View v) {
-                            VoicePreviewHelper.stopPreview();
-                            currentPlayingVoice = null;
-                            currentPlayingBtn = null;
+                            if (previewTts != null) {
+                                try { previewTts.stop(); } catch (Exception ignored) {}
+                            }
                             AppConfig.setVoiceName(context, voice.name);
                             Toast.makeText(context, (en ? "✅ Switched voice to: " : "✅ 已選用聲線：") + voice.name, Toast.LENGTH_SHORT).show();
                             if (dialogRef[0] != null) dialogRef[0].dismiss();
@@ -348,9 +353,9 @@ public class VoicePersonaDialog {
         builder.setNegativeButton(en ? "Cancel" : "取消", null);
         builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
             @Override public void onDismiss(DialogInterface d) {
-                VoicePreviewHelper.stopPreview();
-                currentPlayingVoice = null;
-                currentPlayingBtn = null;
+                if (previewTts != null) {
+                    try { previewTts.stop(); } catch (Exception ignored) {}
+                }
             }
         });
         dialogRef[0] = builder.show();
