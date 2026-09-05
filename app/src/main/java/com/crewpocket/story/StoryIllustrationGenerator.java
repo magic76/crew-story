@@ -137,19 +137,16 @@ public class StoryIllustrationGenerator {
             }
 
             StringBuilder userReq = new StringBuilder();
-            userReq.append("You are an elite visual prompt engineer specializing in award-winning children's storybook illustrations for diffusion models (Imagen 3 / SDXL).\n");
-            userReq.append("Your task: Expand the provided story context into a single, cohesive, vivid English visual prompt (around 40-70 words) that depicts a captivating picture book scene.\n\n");
-            userReq.append("Context:\n");
-            if (storyTitle != null && !storyTitle.trim().isEmpty()) userReq.append("- Story Theme: ").append(storyTitle.trim()).append("\n");
-            if (characterName != null && !characterName.trim().isEmpty()) userReq.append("- Main Character: ").append(characterName.trim()).append("\n");
-            if (emotion != null && !emotion.trim().isEmpty()) userReq.append("- Emotional Mood: ").append(emotion.trim()).append("\n");
-            if (pageNarration != null && !pageNarration.trim().isEmpty()) userReq.append("- Scene Narration: ").append(pageNarration.trim()).append("\n");
-            userReq.append("- Required Art Style: ").append(styleGuidance).append("\n\n");
-            userReq.append("Guidelines:\n");
-            userReq.append("1. Focus strictly on visual elements: character pose/expression, focal scene action, cinematic camera angle (e.g. eye-level, low angle wide shot), lighting (e.g. golden hour backlight, soft moonlight), background environment detail.\n");
-            userReq.append("2. Seamlessly incorporate the requested Art Style keywords.\n");
-            userReq.append("3. End the prompt with: \", pure illustration, no text, no words, no letters, masterpiece, trending picture book art\".\n");
-            userReq.append("4. Output ONLY the raw prompt string. Do NOT add quotation marks, markdown headings, bullets, or explanations.");
+            userReq.append("You are an expert AI artist crafting text-to-image prompts for a picture book illustration.\n\n");
+            userReq.append("Story Title: ").append(storyTitle != null ? storyTitle : "").append("\n");
+            if (characterName != null && !characterName.trim().isEmpty()) userReq.append("Character: ").append(characterName.trim()).append("\n");
+            if (emotion != null && !emotion.trim().isEmpty()) userReq.append("Atmosphere/Mood: ").append(emotion.trim()).append("\n");
+            userReq.append("Story Scene Text: ").append(pageNarration != null ? pageNarration : "").append("\n");
+            userReq.append("Target Art Style: ").append(styleGuidance).append("\n\n");
+            userReq.append("Instruction:\n");
+            userReq.append("Write a detailed and vivid English visual prompt for generating this scene image.\n");
+            userReq.append("Describe character appearance, action, camera angle, lighting, background environment, and rich artistic style details.\n");
+            userReq.append("Strict Requirement: Return ONLY the final prompt text directly. Do not include introductory words, conversational filler, or formatting notes.");
 
             JSONObject requestJson = new JSONObject();
             JSONArray contents = new JSONArray();
@@ -165,7 +162,7 @@ public class StoryIllustrationGenerator {
 
             JSONObject genConfig = new JSONObject();
             genConfig.put("temperature", 0.7);
-            genConfig.put("maxOutputTokens", 200);
+            genConfig.put("maxOutputTokens", 800);
             requestJson.put("generationConfig", genConfig);
 
             RequestBody body = RequestBody.create(
