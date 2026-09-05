@@ -1,0 +1,19 @@
+# Build outputs
+bin/
+*.apk
+*.idsig
+
+# Python & temporary
+__pycache__/
+*.pyc
+
+# Keystores & keys
+*.keystore
+*.jks
+
+# IDE & OS
+.DS_Store
+.idea/
+*.iml
+.gradle/
+build/
