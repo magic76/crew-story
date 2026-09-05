@@ -120,6 +120,7 @@ public class StoryEditorActivity extends Activity {
             @Override public void onClick(View v) {
                 saveStoryData();
                 Toast.makeText(StoryEditorActivity.this, I18n.t(StoryEditorActivity.this, "✅ 故事已成功儲存！", "✅ Story saved successfully!"), Toast.LENGTH_SHORT).show();
+                finish();
             }
         });
         appBar.addView(saveTopBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)));

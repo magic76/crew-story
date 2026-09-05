@@ -125,28 +125,34 @@ public class StoryIllustrationGenerator {
         try {
             String styleGuidance;
             if (STYLE_3D.equalsIgnoreCase(styleKey)) {
-                styleGuidance = "3D Pixar and Disney animation film render, charming character proportions, volumetric studio lighting, subsurface scattering, tactile textures, rich vivid colors";
+                styleGuidance = "3D Pixar and Disney animation film render, charming stylized character proportions, raytraced volumetric studio lighting, subsurface scattering on skin, tactile cloth and environment textures, hyper-detailed whimsical atmosphere, rich vivid color palette";
             } else if (STYLE_CRAYON.equalsIgnoreCase(styleKey)) {
-                styleGuidance = "Charming children's crayon and colored pencil drawing on textured heavy craft paper, warm naive art style, joyful vibrant colors, visible pencil strokes";
+                styleGuidance = "Charming children's crayon and colored pencil illustration, drawn on textured heavy cream paper, playful naive storybook art, vibrant wax strokes, gentle shading, warm joyful fairy tale feel";
             } else if (STYLE_CLASSIC.equalsIgnoreCase(styleKey)) {
-                styleGuidance = "Golden age vintage fairy tale book illustration, Arthur Rackham and Beatrix Potter inspired, detailed ink lineart and warm glowing watercolor wash, timeless magical atmosphere";
+                styleGuidance = "Golden age vintage fairy tale book illustration, Arthur Rackham and Beatrix Potter inspired, intricate cross-hatch ink lineart, layered glowing watercolor wash, timeless magical ambiance, antique storybook plate";
             } else if (STYLE_ANIME.equalsIgnoreCase(styleKey)) {
-                styleGuidance = "Dreamy Studio Ghibli and Makoto Shinkai anime storybook illustration, breathtaking soft sky lighting, lush nature, expressive character design, magical dust particles";
+                styleGuidance = "Dreamy Studio Ghibli and Makoto Shinkai anime storybook masterpiece, breathtaking celestial lighting, lush hand-painted environmental details, delicate expressive character design, cinematic depth of field";
             } else {
-                styleGuidance = "Award-winning children's picture book watercolor and ink illustration, cozy pastel tones, dreamy atmosphere, fluid wet-on-wet paint texture, enchanting lighting";
+                styleGuidance = "Award-winning children's picture book watercolor and ink illustration, cozy pastel tones, dreamy atmosphere, fluid wet-on-wet paint texture, enchanting lighting, Caldecott medal picture book art";
             }
 
             StringBuilder userReq = new StringBuilder();
-            userReq.append("You are an expert AI artist crafting text-to-image prompts for a picture book illustration.\n\n");
-            userReq.append("Story Title: ").append(storyTitle != null ? storyTitle : "").append("\n");
-            if (characterName != null && !characterName.trim().isEmpty()) userReq.append("Character: ").append(characterName.trim()).append("\n");
-            if (emotion != null && !emotion.trim().isEmpty()) userReq.append("Atmosphere/Mood: ").append(emotion.trim()).append("\n");
-            userReq.append("Story Scene Text: ").append(pageNarration != null ? pageNarration : "").append("\n");
-            userReq.append("Target Art Style: ").append(styleGuidance).append("\n\n");
-            userReq.append("Instruction:\n");
-            userReq.append("Write a detailed and vivid English visual prompt for generating this scene image.\n");
-            userReq.append("Describe character appearance, action, camera angle, lighting, background environment, and rich artistic style details.\n");
-            userReq.append("Strict Requirement: Return ONLY the final prompt text directly. Do not include introductory words, conversational filler, or formatting notes.");
+            userReq.append("You are an expert AI prompt engineer crafting hyper-detailed, rich text-to-image prompts for high-quality children's book illustrations (supporting SDXL Turbo & Imagen 3).\n\n");
+            userReq.append("Story Context:\n");
+            userReq.append("- Story Theme: ").append(storyTitle != null ? storyTitle : "").append("\n");
+            if (characterName != null && !characterName.trim().isEmpty()) userReq.append("- Character: ").append(characterName.trim()).append("\n");
+            if (emotion != null && !emotion.trim().isEmpty()) userReq.append("- Mood/Tone: ").append(emotion.trim()).append("\n");
+            userReq.append("- Scene Narration: ").append(pageNarration != null ? pageNarration : "").append("\n");
+            userReq.append("- Artistic Style: ").append(styleGuidance).append("\n\n");
+            userReq.append("Task & Requirements:\n");
+            userReq.append("1. Expand this scene into an ultra-detailed, vivid English visual prompt (around 150 to 300 words). Because open diffusion models thrive on exhaustive descriptive keywords, paint the entire picture with words:\n");
+            userReq.append("   - Main subject & character: precise physical appearance, clothing colors/textures, pose, expressive facial gestures.\n");
+            userReq.append("   - Immediate action & focal point: what is happening right in this magical moment.\n");
+            userReq.append("   - Environment & background: foreground elements, midground props, lush background scenery, atmospheric depth.\n");
+            userReq.append("   - Cinematic Lighting & Palette: light source direction (e.g. golden afternoon sun rays, dappled forest canopy light, soft glowing lantern), color scheme, shadows and highlights.\n");
+            userReq.append("   - Art medium & texture: specific art materials, strokes, rendering technique, high clarity.\n");
+            userReq.append("2. Include negative constraints at the very end: ', pure illustration, masterpiece, 8k resolution, trending picture book art, no text, no watermark, no typography, no letters, no logos'.\n");
+            userReq.append("3. Output ONLY the complete prompt text directly. Do not output conversational preamble, explanations, or quotes.");
 
             JSONObject requestJson = new JSONObject();
             JSONArray contents = new JSONArray();
@@ -162,7 +168,7 @@ public class StoryIllustrationGenerator {
 
             JSONObject genConfig = new JSONObject();
             genConfig.put("temperature", 0.7);
-            genConfig.put("maxOutputTokens", 800);
+            genConfig.put("maxOutputTokens", 1200);
             requestJson.put("generationConfig", genConfig);
 
             RequestBody body = RequestBody.create(
