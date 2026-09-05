@@ -31,7 +31,8 @@ public class StoryIllustrationGenerator {
 
     public static final String[] IMAGEN_MODELS = {
             "imagen-3.0-generate-002",
-            "imagen-3.0-fast-generate-001"
+            "imagen-3.0-fast-generate-001",
+            "imagen-3.0-generate-001"
     };
 
     public static final String STYLE_WATERCOLOR = "watercolor";
@@ -90,7 +91,7 @@ public class StoryIllustrationGenerator {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                tryImagenModel(context, 0, apiKey.trim(), prompt, callback);
+                tryImagenModel(context, 0, apiKey.trim(), prompt, "", callback);
             }
         }).start();
     }
@@ -99,9 +100,11 @@ public class StoryIllustrationGenerator {
                                        final int modelIdx,
                                        final String apiKey,
                                        final String prompt,
+                                       final String lastError,
                                        final IllustrationCallback callback) {
         if (modelIdx >= IMAGEN_MODELS.length) {
-            notifyError(callback, I18n.t(context, "AI 繪圖生成失敗，請確認 API Key 權限或稍後重試！", "AI image generation failed. Please check API Key permissions."));
+            String errDetail = (lastError != null && !lastError.isEmpty()) ? (" (" + lastError + ")") : "";
+            notifyError(callback, I18n.t(context, "AI 繪圖生成失敗" + errDetail + "，請確認 API Key 權限！", "AI image generation failed" + errDetail + ". Please check API Key permissions."));
             return;
         }
 
@@ -129,6 +132,8 @@ public class StoryIllustrationGenerator {
 
             Request request = new Request.Builder()
                     .url(endpoint)
+                    .addHeader("x-goog-api-key", apiKey)
+                    .addHeader("Content-Type", "application/json")
                     .post(body)
                     .build();
 
@@ -136,12 +141,13 @@ public class StoryIllustrationGenerator {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     Log.w(TAG, "Imagen model " + model + " failed: " + e.getMessage());
-                    tryImagenModel(context, modelIdx + 1, apiKey, prompt, callback);
+                    tryImagenModel(context, modelIdx + 1, apiKey, prompt, e.getMessage(), callback);
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     String resStr = "";
+                    String currentErr = "";
                     try {
                         if (response.body() != null) {
                             resStr = response.body().string();
@@ -162,8 +168,26 @@ public class StoryIllustrationGenerator {
                                 }
                             }
                         }
-                        Log.w(TAG, "Imagen " + model + " HTTP " + response.code() + ": " + resStr);
+
+                        if (!resStr.isEmpty()) {
+                            try {
+                                JSONObject errObj = new JSONObject(resStr);
+                                JSONObject errorChild = errObj.optJSONObject("error");
+                                if (errorChild != null) {
+                                    currentErr = "HTTP " + response.code() + ": " + errorChild.optString("message", resStr);
+                                } else {
+                                    currentErr = "HTTP " + response.code() + ": " + resStr;
+                                }
+                            } catch (Exception ignored) {
+                                currentErr = "HTTP " + response.code();
+                            }
+                        } else {
+                            currentErr = "HTTP " + response.code() + " " + response.message();
+                        }
+
+                        Log.w(TAG, "Imagen " + model + " error: " + currentErr);
                     } catch (Exception e) {
+                        currentErr = "Parse error: " + e.getMessage();
                         Log.w(TAG, "Imagen " + model + " parse error: " + e.getMessage());
                     } finally {
                         if (response != null) {
@@ -172,13 +196,13 @@ public class StoryIllustrationGenerator {
                     }
 
                     // Fallback to next model
-                    tryImagenModel(context, modelIdx + 1, apiKey, prompt, callback);
+                    tryImagenModel(context, modelIdx + 1, apiKey, prompt, currentErr, callback);
                 }
             });
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to create payload for " + model, e);
-            tryImagenModel(context, modelIdx + 1, apiKey, prompt, callback);
+            tryImagenModel(context, modelIdx + 1, apiKey, prompt, e.getMessage(), callback);
         }
     }
 
