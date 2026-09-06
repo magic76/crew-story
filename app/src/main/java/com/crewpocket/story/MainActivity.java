@@ -130,7 +130,7 @@ public class MainActivity extends Activity {
         appBar.setBackgroundColor(CrewTheme.BG_PRIMARY);
 
         TextView appTitle = new TextView(this);
-        appTitle.setText(I18n.t(this, "📚 繪本說書人", "📚 Crew Story"));
+        appTitle.setText(I18n.t(this, "📚 Crew Story · 阿奇", "📚 Crew Story · Archie"));
         appTitle.setTextColor(Color.WHITE);
         appTitle.setTextSize(17);
         appTitle.setTypeface(Typeface.DEFAULT_BOLD);

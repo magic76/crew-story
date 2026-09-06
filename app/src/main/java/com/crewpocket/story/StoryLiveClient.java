@@ -76,7 +76,7 @@ public class StoryLiveClient {
     private volatile boolean userTurnActive = false;
     private volatile boolean awaitingUserResponse = false;
     private final StringBuilder currentChildTranscript = new StringBuilder();
-    private final StringBuilder currentTeacherAnswer = new StringBuilder();
+    private final StringBuilder currentArchieAnswer = new StringBuilder();
     private int currentInteractionPage = 0;
 
     private WebSocket webSocket;
@@ -139,7 +139,7 @@ public class StoryLiveClient {
                         notifyError("Setup 指令傳送失敗");
                         return;
                     }
-                    notifyStatus("等待 AI 說書人連線就緒…");
+                    notifyStatus("正在準備阿奇…");
                 } catch (Exception e) {
                     notifyError("初始化建置失敗: " + e.getMessage());
                 }
@@ -237,7 +237,7 @@ public class StoryLiveClient {
         awaitingUserResponse = true;
         currentInteractionPage = currentPageIndex;
         currentChildTranscript.setLength(0);
-        currentTeacherAnswer.setLength(0);
+        currentArchieAnswer.setLength(0);
 
         if (!sendRealtimeSignal("activityStart")) {
             userTurnActive = false;
@@ -264,7 +264,7 @@ public class StoryLiveClient {
 
         boolean sent = sendRealtimeSignal("activityEnd");
         if (sent) {
-            notifyStatus("波波老師正在回答…");
+            notifyStatus("阿奇正在回答…");
         } else {
             awaitingUserResponse = false;
             notifyError("語音送出失敗，請再試一次");
@@ -338,19 +338,10 @@ public class StoryLiveClient {
         JSONArray parts = new JSONArray();
         JSONObject part = new JSONObject();
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("你是專業、富有情感的兒童故事繪本說書人「波波老師」。\n");
-        sb.append("朗讀語言：").append(storyLang).append("。\n");
-        sb.append("你正在為小聽眾生動朗讀一本繪本故事：《")
-                .append(story.title).append("》。\n");
-        sb.append("請以親切生動、富有感情的童趣語氣專注朗讀指定頁面的繪本內容")
-                .append("（包含旁白與角色對白演繹）。\n");
-        sb.append("當小朋友主動按下說話按鈕並提出問題時，先簡短、自然、適齡地回答，")
-                .append("不要把回答變成長篇教學，也不要自行要求小朋友一直回答問題。\n");
-        sb.append("回答完成後等待系統要求你回到故事，再自然接回被打斷的頁面。\n");
-        sb.append("一般朗讀時請直接生動朗讀內容，不需要額外問候或自言自語。\n");
-
-        part.put("text", sb.toString());
+        part.put(
+                "text",
+                ArchiePersona.buildLiveSystemInstruction(story.title, storyLang)
+        );
         parts.put(part);
         sysInstruction.put("parts", parts);
         setup.put("systemInstruction", sysInstruction);
@@ -365,7 +356,7 @@ public class StoryLiveClient {
 
             if (response.has("setupComplete") || response.has("setup_complete")) {
                 setupReady = true;
-                notifyStatus("🎙️ AI 說書人已就緒，開始說故事！");
+                notifyStatus("阿奇準備好了");
                 notifyConnected();
                 startPlaybackEngine();
                 sendNarrateCurrentPageDirective();
@@ -419,11 +410,11 @@ public class StoryLiveClient {
                     for (int i = 0; i < parts.length(); i++) {
                         JSONObject part = parts.getJSONObject(i);
 
-                        // 1004: Parse teacher answer text when answering child
+                        // 1004: Parse Archie answer text when answering child
                         String textPart = part.optString("text", "");
                         if (!textPart.isEmpty() && awaitingUserResponse) {
-                            currentTeacherAnswer.append(textPart);
-                            notifyTeacherAnswerText(currentTeacherAnswer.toString(), false);
+                            currentArchieAnswer.append(textPart);
+                            notifyTeacherAnswerText(currentArchieAnswer.toString(), false);
                         }
 
                         JSONObject inline = part.optJSONObject("inlineData");
@@ -490,19 +481,19 @@ public class StoryLiveClient {
         if (!awaitingUserResponse) return;
 
         awaitingUserResponse = false;
-        notifyTeacherAnswerText(currentTeacherAnswer.toString(), true);
+        notifyTeacherAnswerText(currentArchieAnswer.toString(), true);
 
         StoryInteractionItem item = new StoryInteractionItem(
                 currentInteractionPage,
                 currentChildTranscript.toString().trim(),
-                currentTeacherAnswer.toString().trim()
+                currentArchieAnswer.toString().trim()
         );
         notifyInteractionCompleted(item);
 
         currentChildTranscript.setLength(0);
-        currentTeacherAnswer.setLength(0);
+        currentArchieAnswer.setLength(0);
 
-        notifyStatus("回到故事…");
+        notifyStatus("阿奇回到故事…");
         sendResumeAfterConversationDirective();
     }
 
@@ -525,11 +516,11 @@ public class StoryLiveClient {
 
         if (currentPageIndex + 1 < story.pages.size()) {
             currentPageIndex++;
-            notifyStatus("正在朗讀第 " + (currentPageIndex + 1) + " 頁…");
+            notifyStatus("阿奇正在說第 " + (currentPageIndex + 1) + " 頁…");
             sendNarrateCurrentPageDirective();
         } else {
             isFinished = true;
-            notifyStatus("🎉 故事全篇朗讀完成！");
+            notifyStatus("故事說完了 ✨");
             mainHandler.post(new Runnable() {
                 @Override
                 public void run() {

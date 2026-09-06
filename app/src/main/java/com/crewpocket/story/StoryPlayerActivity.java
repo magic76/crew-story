@@ -62,7 +62,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
     private LinearLayout liveInteractionCard;
     private TextView childTranscriptText;
-    private TextView teacherAnswerText;
+    private TextView archieAnswerText;
 
     private final List<StoryInteractionItem> interactionHistory = new ArrayList<>();
 
@@ -195,7 +195,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         dialogueText.setLayoutParams(dLp);
         textLayout.addView(dialogueText);
 
-        // 1004: Live Child-Teacher Q&A card
+        // 1004: Live Child-Archie Q&A card
         liveInteractionCard = new LinearLayout(this);
         liveInteractionCard.setOrientation(LinearLayout.VERTICAL);
         liveInteractionCard.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -212,12 +212,12 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         childTranscriptText.setLineSpacing(dp(3), 1.15f);
         liveInteractionCard.addView(childTranscriptText);
 
-        teacherAnswerText = new TextView(this);
-        teacherAnswerText.setTextSize(14);
-        teacherAnswerText.setTextColor(CrewTheme.AMBER_400);
-        teacherAnswerText.setLineSpacing(dp(4), 1.2f);
-        teacherAnswerText.setPadding(0, dp(6), 0, 0);
-        liveInteractionCard.addView(teacherAnswerText);
+        archieAnswerText = new TextView(this);
+        archieAnswerText.setTextSize(14);
+        archieAnswerText.setTextColor(CrewTheme.AMBER_400);
+        archieAnswerText.setLineSpacing(dp(4), 1.2f);
+        archieAnswerText.setPadding(0, dp(6), 0, 0);
+        liveInteractionCard.addView(archieAnswerText);
 
         textLayout.addView(liveInteractionCard);
 
@@ -346,7 +346,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         // Push-to-Talk Button (Manual Interruption / Child Speaking Turn)
         talkBtn = new Button(this);
-        talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+        talkBtn.setText(I18n.t(this, "🎤 跟阿奇說話", "🎤 Talk to Archie"));
         talkBtn.setTextColor(Color.WHITE);
         talkBtn.setTextSize(14);
         talkBtn.setTypeface(Typeface.DEFAULT_BOLD);
@@ -360,7 +360,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         wrapper.addView(talkBtn, talkLp);
 
         interactionHintText = new TextView(this);
-        interactionHintText.setText(I18n.t(this, "🎙️ 想問問題？點上方「我要說話」即可插話", "🎙️ Want to ask a question? Tap 'I want to talk'"));
+        interactionHintText.setText(I18n.t(this, "有問題嗎？點「跟阿奇說話」", "Have a question? Tap 'Talk to Archie'"));
         interactionHintText.setTextColor(CrewTheme.TEXT_SECONDARY);
         interactionHintText.setTextSize(11);
         interactionHintText.setGravity(Gravity.CENTER);
@@ -407,9 +407,9 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         if (liveClient.isUserSpeaking()) {
             // Second tap: Explicit end of the child's turn
             if (liveClient.endUserTurn()) {
-                talkBtn.setText(I18n.t(this, "⏳ 波波老師回答中…", "⏳ Teacher is answering…"));
+                talkBtn.setText(I18n.t(this, "✨ 阿奇正在回答…", "✨ Archie is answering…"));
                 talkBtn.setEnabled(false);
-                setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY, "Thinking..."));
+                setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.RESPONDING));
             }
             return;
         }
@@ -418,7 +418,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         // First tap: Intentionally interrupt narration and open the mic
         if (liveClient.beginUserTurn()) {
-            talkBtn.setText(I18n.t(this, "⏹️ 說完了", "⏹️ Done speaking"));
+            talkBtn.setText(I18n.t(this, "✓ 我說完了", "✓ I'm done"));
             talkBtn.setEnabled(true);
             setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.LISTENING));
         }
@@ -575,25 +575,29 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         String status = "";
         String playText = I18n.t(this, "⏸ 暫停", "⏸ Pause");
         int playColor = CrewTheme.AMBER_400;
-        String interaction = I18n.t(this, "🎙️ 可以隨時跟波波老師說話", "🎙️ You can talk to the storyteller anytime");
+        String interaction = I18n.t(this, "有問題就跟阿奇說", "Talk to Archie whenever you have a question");
 
         switch (state.mode) {
             case CONNECTING:
-                status = I18n.t(this, "正在準備說書人…", "Preparing storyteller…");
+                status = I18n.t(this, "阿奇正在準備故事…", "Archie is getting the story ready…");
                 break;
             case READY:
-                status = I18n.t(this, "已就緒", "Ready");
-                statusColor = CrewTheme.EMERALD_400;
+                status = "";
                 break;
             case NARRATING:
-                status = I18n.t(this, "波波老師正在說故事", "Storyteller is narrating");
+                status = I18n.t(this, "阿奇在說故事", "Archie is telling the story");
                 statusColor = CrewTheme.SKY_400;
-                interaction = I18n.t(this, "🎙️ 想問問題？直接說話就可以", "🎙️ Have a question? Just speak");
+                interaction = I18n.t(this, "有問題？點「跟阿奇說話」", "Have a question? Tap 'Talk to Archie'");
                 break;
             case LISTENING:
-                status = I18n.t(this, "正在聽你說…", "Listening to you…");
+                status = I18n.t(this, "阿奇在聽…", "Archie is listening…");
                 statusColor = CrewTheme.PURPLE_400;
-                interaction = I18n.t(this, "正在聽你說話…", "Listening…");
+                interaction = I18n.t(this, "說完後按「我說完了」", "Tap 'I'm done' when finished");
+                break;
+            case RESPONDING:
+                status = I18n.t(this, "阿奇正在回答…", "Archie is answering…");
+                statusColor = CrewTheme.PURPLE_400;
+                interaction = I18n.t(this, "阿奇聽到了，正在想怎麼回答", "Archie heard you and is thinking");
                 break;
             case PAUSED:
                 status = I18n.t(this, "故事已暫停", "Story paused");
@@ -623,6 +627,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         statusText.setText(status);
         statusText.setTextColor(statusColor);
+        statusText.setVisibility(TextUtils.isEmpty(status) ? View.GONE : View.VISIBLE);
         playPauseBtn.setText(playText);
         playPauseBtn.setBackground(makePrimaryButton(playColor));
         interactionHintText.setText(interaction);
@@ -644,7 +649,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     public void onError(String error) {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.ERROR, error));
         if (talkBtn != null) {
-            talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+            talkBtn.setText(I18n.t(this, "🎤 跟阿奇說話", "🎤 Talk to Archie"));
             talkBtn.setEnabled(liveClient != null && !liveClient.isPaused() && !liveClient.isAwaitingUserResponse());
         }
         Toast.makeText(this, error, Toast.LENGTH_LONG).show();
@@ -666,15 +671,15 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     @Override
     public void onAiSpeechStarted() {
         if (liveClient != null && liveClient.isAwaitingUserResponse()) {
-            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY, I18n.t(this, "波波老師正在回答你…", "Teacher is answering…")));
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.RESPONDING));
             if (talkBtn != null) {
-                talkBtn.setText(I18n.t(this, "⏳ 波波老師回答中…", "⏳ Teacher is answering…"));
+                talkBtn.setText(I18n.t(this, "✨ 阿奇正在回答…", "✨ Archie is answering…"));
                 talkBtn.setEnabled(false);
             }
         } else {
             setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.NARRATING));
             if (talkBtn != null && !liveClient.isPaused() && !liveClient.isUserSpeaking() && !liveClient.isAwaitingUserResponse()) {
-                talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+                talkBtn.setText(I18n.t(this, "🎤 跟阿奇說話", "🎤 Talk to Archie"));
                 talkBtn.setEnabled(true);
             }
         }
@@ -682,11 +687,14 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
     @Override
     public void onAiSpeechEnded() {
-        if (liveClient != null && !liveClient.isPaused() && uiState.mode != StoryPlayerUiState.Mode.FINISHED) {
+        if (liveClient != null
+                && !liveClient.isPaused()
+                && uiState.mode != StoryPlayerUiState.Mode.FINISHED
+                && !liveClient.isAwaitingUserResponse()) {
             setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY));
         }
         if (talkBtn != null && liveClient != null && !liveClient.isPaused() && !liveClient.isUserSpeaking() && !liveClient.isAwaitingUserResponse()) {
-            talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+            talkBtn.setText(I18n.t(this, "🎤 跟阿奇說話", "🎤 Talk to Archie"));
             talkBtn.setEnabled(true);
         }
     }
@@ -695,7 +703,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     public void onUserInterrupted() {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.LISTENING));
         if (talkBtn != null) {
-            talkBtn.setText(I18n.t(this, "⏹️ 說完了", "⏹️ Done speaking"));
+            talkBtn.setText(I18n.t(this, "✓ 我說完了", "✓ I'm done"));
             talkBtn.setEnabled(true);
         }
         if (liveInteractionCard != null) {
@@ -703,8 +711,8 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
             if (childTranscriptText != null) {
                 childTranscriptText.setText(I18n.t(this, "👦 小朋友正在說話…", "👦 Child is speaking…"));
             }
-            if (teacherAnswerText != null) {
-                teacherAnswerText.setText("");
+            if (archieAnswerText != null) {
+                archieAnswerText.setText("");
             }
         }
     }
@@ -714,8 +722,12 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         if (liveClient != null && (liveClient.isUserSpeaking() || liveClient.isAwaitingUserResponse())) {
             return;
         }
-        if (uiState.mode == StoryPlayerUiState.Mode.CONNECTING && !TextUtils.isEmpty(status)) {
-            statusText.setText(status);
+        if (uiState.mode == StoryPlayerUiState.Mode.CONNECTING) {
+            statusText.setText(I18n.t(
+                    this,
+                    "阿奇正在準備故事…",
+                    "Archie is getting the story ready…"
+            ));
         }
     }
 
@@ -729,9 +741,9 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
     @Override
     public void onTeacherAnswerText(String answerText, boolean isComplete) {
-        if (liveInteractionCard != null && teacherAnswerText != null) {
+        if (liveInteractionCard != null && archieAnswerText != null) {
             liveInteractionCard.setVisibility(View.VISIBLE);
-            teacherAnswerText.setText(I18n.t(this, "🐻 波波老師：「" + answerText + "」", "🐻 Teacher: \"" + answerText + "\""));
+            archieAnswerText.setText(I18n.t(this, "✨ 阿奇：「" + answerText + "」", "✨ Archie: \"" + answerText + "\""));
         }
     }
 
@@ -772,8 +784,8 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         TextView sub = new TextView(this);
         sub.setText(I18n.t(this,
-                "《" + story.title + "》共讀期間小聽眾與波波老師的問答交流：",
-                "Questions and answers between the child and storyteller:"));
+                "《" + story.title + "》共讀期間，小聽眾和阿奇聊過這些：",
+                "Things the child and Archie talked about:"));
         sub.setTextColor(CrewTheme.TEXT_MUTED);
         sub.setTextSize(12);
         sub.setPadding(0, dp(4), 0, dp(12));
@@ -783,7 +795,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
             TextView empty = new TextView(this);
             empty.setText(I18n.t(this,
                     "💡 目前還沒有互動問答紀錄。\n\n在聽故事時按下「🎤 我要說話」向波波老師提問，問答紀錄就會自動收錄在這裡喔！",
-                    "💡 No Q&A records yet.\n\nTap '🎤 I want to talk' during the story to ask questions!"));
+                    "💡 Nothing here yet.\n\nTap '🎤 Talk to Archie' while reading."));
             empty.setTextColor(CrewTheme.TEXT_SECONDARY);
             empty.setTextSize(13);
             empty.setPadding(dp(8), dp(12), dp(8), dp(16));
@@ -822,15 +834,15 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
                 child.setPadding(0, dp(4), 0, dp(4));
                 itemCard.addView(child);
 
-                String teacherMsg = item.teacherAnswer.isEmpty()
+                String archieMsg = item.teacherAnswer.isEmpty()
                         ? I18n.t(this, "（語音溫馨回答）", "(Warm voice answer)")
                         : item.teacherAnswer;
-                TextView teacher = new TextView(this);
-                teacher.setText("🐻 波波老師：" + teacherMsg);
-                teacher.setTextColor(CrewTheme.AMBER_400);
-                teacher.setTextSize(13);
-                teacher.setLineSpacing(dp(3), 1.15f);
-                itemCard.addView(teacher);
+                TextView archie = new TextView(this);
+                archie.setText("✨ 阿奇：" + archieMsg);
+                archie.setTextColor(CrewTheme.AMBER_400);
+                archie.setTextSize(13);
+                archie.setLineSpacing(dp(3), 1.15f);
+                itemCard.addView(archie);
 
                 list.addView(itemCard);
             }

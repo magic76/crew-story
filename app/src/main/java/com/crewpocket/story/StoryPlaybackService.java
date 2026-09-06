@@ -131,9 +131,9 @@ public class StoryPlaybackService extends Service {
             try {
                 Class<?> channelClass = Class.forName("android.app.NotificationChannel");
                 java.lang.reflect.Constructor<?> constructor = channelClass.getConstructor(String.class, CharSequence.class, int.class);
-                Object channel = constructor.newInstance(CHANNEL_ID, "繪本說書播放", 2 /* IMPORTANCE_LOW */);
+                Object channel = constructor.newInstance(CHANNEL_ID, "Crew Story · 阿奇", 2 /* IMPORTANCE_LOW */);
                 java.lang.reflect.Method setDesc = channelClass.getMethod("setDescription", String.class);
-                setDesc.invoke(channel, "背景繪本說書與睡前聽書播放控制");
+                setDesc.invoke(channel, "阿奇說故事的背景播放");
 
                 NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
                 if (nm != null) {
@@ -158,7 +158,7 @@ public class StoryPlaybackService extends Service {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, contentIntent, flags);
 
         String title = (storyEmoji != null ? storyEmoji + " " : "") + (storyTitle != null ? storyTitle : "繪本說書中");
-        String content = "第 " + (currentPage + 1) + " / " + totalPages + " 頁 · 🎙️ AI 說書人朗讀中";
+        String content = "第 " + (currentPage + 1) + " / " + totalPages + " 頁 · ✨ 阿奇說故事中";
 
         Notification.Builder builder = new Notification.Builder(this);
         if (Build.VERSION.SDK_INT >= 26) {

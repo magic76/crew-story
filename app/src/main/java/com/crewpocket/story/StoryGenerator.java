@@ -87,7 +87,7 @@ public class StoryGenerator {
                     JSONArray partsArray = new JSONArray();
 
                     // Prompt instruction
-                    String systemPrompt = "你是一位頂級的兒童繪本作家與生動的說書人。" +
+                    String systemPrompt = "你正在為 Crew Story 的故事夥伴「阿奇 Archie」準備一本高品質兒童繪本。" +
                             "請根據使用者提供的創作靈感或圖片，創作出一篇引人入勝、生動溫暖、有起承轉合的故事繪本。\n\n" +
                             "【故事設定要求】\n" +
                             "- 語言：" + language + "\n" +

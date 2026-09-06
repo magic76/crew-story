@@ -1,15 +1,12 @@
 package com.crewpocket.story;
 
-/**
- * Small UI state model for StoryPlayerActivity.
- * Keeps transient Gemini Live connection / narration states out of ad-hoc TextView mutations.
- */
 public final class StoryPlayerUiState {
     public enum Mode {
         CONNECTING,
         READY,
         NARRATING,
         LISTENING,
+        RESPONDING,
         PAUSED,
         ERROR,
         FINISHED,
