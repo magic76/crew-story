@@ -3,13 +3,12 @@ package com.crewpocket.story;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,8 +21,16 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.InputStream;
-
+/**
+ * Immersive story reader.
+ *
+ * crew-story-1001 goals:
+ * - illustration first (book-like, not dashboard-like)
+ * - normal connection details are visually quiet; errors remain visible
+ * - make "you can interrupt the storyteller" discoverable
+ * - centralize transient player UI state instead of mutating status labels everywhere
+ * - keep StoryLiveClient / StoryPlaybackService behavior compatible with the existing app
+ */
 public class StoryPlayerActivity extends Activity implements StoryLiveClient.Listener {
 
     private StoryModel story;
@@ -32,7 +39,8 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
     private TextView titleText;
     private TextView pageCounterText;
-    private TextView statusBadge;
+    private TextView statusText;
+    private TextView interactionHintText;
     private TextView storyContentText;
     private TextView dialogueText;
     private ImageView pageImageView;
@@ -45,6 +53,8 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     private Button prevBtn;
     private Button nextBtn;
     private TextView emotionBadge;
+
+    private StoryPlayerUiState uiState = StoryPlayerUiState.of(StoryPlayerUiState.Mode.CONNECTING);
 
     private int dp(float val) {
         return CrewTheme.dp(this, val);
@@ -72,182 +82,104 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         buildUI();
         updatePageDisplay(0);
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.CONNECTING));
 
-        // Auto-start Live Storytelling Agent & Background Playback Service
         liveClient = new StoryLiveClient(this, story, 0, this);
         liveClient.start();
+        // Existing service is kept as the foreground notification / wake-lock companion.
         StoryPlaybackService.start(this, story, 0);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (story != null) {
-            StoryModel updated = StoryRepository.getStoryById(this, story.id);
-            if (updated != null) {
-                story = updated;
-                if (titleText != null) titleText.setText(story.coverEmoji + " " + story.title);
-                if (pageSeekBar != null) pageSeekBar.setMax(Math.max(0, story.pages.size() - 1));
-                if (currentPage >= story.pages.size()) currentPage = Math.max(0, story.pages.size() - 1);
-                updatePageDisplay(currentPage);
-            }
+        if (story == null) return;
+
+        StoryModel updated = StoryRepository.getStoryById(this, story.id);
+        if (updated != null) {
+            story = updated;
+            if (titleText != null) titleText.setText(story.coverEmoji + " " + story.title);
+            if (pageSeekBar != null) pageSeekBar.setMax(Math.max(0, story.pages.size() - 1));
+            if (currentPage >= story.pages.size()) currentPage = Math.max(0, story.pages.size() - 1);
+            updatePageDisplay(currentPage);
         }
     }
 
     private void buildUI() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(16), dp(16), dp(16));
+        root.setPadding(dp(14), dp(10), dp(14), dp(14));
         root.setBackgroundColor(CrewTheme.BG_PRIMARY);
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 1. Top Header (Back Button, Title, Page Counter, Edit Button)
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(0, 0, 0, dp(12));
+        root.addView(buildHeader());
+        root.addView(buildAmbientStatus());
 
-        TextView backBtn = new TextView(this);
-        backBtn.setText(I18n.t(this, "‹ 返回", "‹ Back"));
-        backBtn.setTextColor(CrewTheme.SKY_400);
-        backBtn.setTextSize(16);
-        backBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        backBtn.setPadding(0, 0, dp(12), 0);
-        backBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finish(); }
-        });
-        header.addView(backBtn);
-
-        titleText = new TextView(this);
-        titleText.setText(story.coverEmoji + " " + story.title);
-        titleText.setTextColor(Color.WHITE);
-        titleText.setTextSize(16);
-        titleText.setTypeface(Typeface.DEFAULT_BOLD);
-        titleText.setSingleLine(true);
-        header.addView(titleText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        pageCounterText = new TextView(this);
-        pageCounterText.setText("1 / " + story.pages.size());
-        pageCounterText.setTextColor(CrewTheme.AMBER_400);
-        pageCounterText.setTextSize(13);
-        pageCounterText.setTypeface(Typeface.DEFAULT_BOLD);
-        pageCounterText.setPadding(dp(6), 0, dp(10), 0);
-        header.addView(pageCounterText);
-
-        Button editBtn = new Button(this);
-        editBtn.setText("✏️ " + I18n.t(this, "編輯", "Edit"));
-        editBtn.setTextSize(11);
-        editBtn.setTextColor(Color.WHITE);
-        editBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
-        editBtn.setPadding(dp(8), dp(2), dp(8), dp(2));
-        editBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (liveClient != null && !liveClient.isPaused()) {
-                    liveClient.pause();
-                    playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "▶️ 繼續播放", "▶️ Resume"));
-                    ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.EMERALD_400);
-                }
-                Intent intent = new Intent(StoryPlayerActivity.this, StoryEditorActivity.class);
-                intent.putExtra("EXTRA_STORY_ID", story.id);
-                startActivity(intent);
-            }
-        });
-        header.addView(editBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)));
-
-        root.addView(header);
-
-        // 2. Status Badge Row
-        LinearLayout statusRow = new LinearLayout(this);
-        statusRow.setOrientation(LinearLayout.HORIZONTAL);
-        statusRow.setGravity(Gravity.CENTER_VERTICAL);
-        statusRow.setPadding(0, 0, 0, dp(10));
-
-        statusBadge = new TextView(this);
-        statusBadge.setText(I18n.t(this, "● 連接中...", "● Connecting..."));
-        statusBadge.setTextSize(12);
-        statusBadge.setTextColor(CrewTheme.TEXT_MUTED);
-        statusRow.addView(statusBadge, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        emotionBadge = new TextView(this);
-        emotionBadge.setText("✨ " + I18n.t(this, "說書中", "Storytelling"));
-        emotionBadge.setTextSize(11);
-        emotionBadge.setTextColor(CrewTheme.PURPLE_400);
-        emotionBadge.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E1B4B"), Color.parseColor("#4338CA"), 8));
-        emotionBadge.setPadding(dp(8), dp(4), dp(8), dp(4));
-        statusRow.addView(emotionBadge);
-
-        root.addView(statusRow);
-
-        // 3. Book Page Main Card (Image + Text ScrollView)
         LinearLayout pageCard = new LinearLayout(this);
         pageCard.setOrientation(LinearLayout.VERTICAL);
-        pageCard.setPadding(dp(16), dp(16), dp(16), dp(16));
-        pageCard.setBackground(CrewTheme.createCard(this, CrewTheme.BG_SURFACE, CrewTheme.BORDER_GOLD, 16));
+        pageCard.setPadding(dp(10), dp(10), dp(10), dp(12));
+        pageCard.setBackground(CrewTheme.createCard(this, CrewTheme.BG_SURFACE, CrewTheme.BORDER_GOLD, 20));
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        cardLp.setMargins(0, 0, 0, dp(12));
+        cardLp.setMargins(0, dp(4), 0, dp(8));
         pageCard.setLayoutParams(cardLp);
 
-        // Illustration Image Container
         imageContainer = new FrameLayout(this);
-        imageContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(175)));
-        imageContainer.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), CrewTheme.BORDER_DEFAULT, 12));
+        LinearLayout.LayoutParams imageLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.35f);
+        imageLp.setMargins(0, 0, 0, dp(10));
+        imageContainer.setLayoutParams(imageLp);
+        imageContainer.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), Color.TRANSPARENT, 16));
+        imageContainer.setClipToOutline(Build.VERSION.SDK_INT >= 21);
 
         pageImageView = new ImageView(this);
         pageImageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
         imageContainer.addView(pageImageView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // Decorative Placeholder when page has no image
         imagePlaceholder = new LinearLayout(this);
         imagePlaceholder.setOrientation(LinearLayout.VERTICAL);
         imagePlaceholder.setGravity(Gravity.CENTER);
-        imagePlaceholder.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        imagePlaceholder.setPadding(dp(16), dp(16), dp(16), dp(16));
+        imageContainer.addView(imagePlaceholder, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         placeholderEmoji = new TextView(this);
         placeholderEmoji.setText("📖");
-        placeholderEmoji.setTextSize(36);
+        placeholderEmoji.setTextSize(48);
         placeholderEmoji.setGravity(Gravity.CENTER);
         imagePlaceholder.addView(placeholderEmoji);
 
         imageActionHint = new TextView(this);
-        imageActionHint.setText(I18n.t(this, "✨ 繪本故事朗讀中", "✨ Story in Progress"));
-        imageActionHint.setTextColor(CrewTheme.TEXT_MUTED);
+        imageActionHint.setTextColor(CrewTheme.TEXT_SECONDARY);
         imageActionHint.setTextSize(12);
-        imageActionHint.setPadding(0, dp(6), 0, 0);
+        imageActionHint.setPadding(0, dp(8), 0, 0);
         imageActionHint.setGravity(Gravity.CENTER);
         imagePlaceholder.addView(imageActionHint);
-        imageContainer.addView(imagePlaceholder);
 
         pageCard.addView(imageContainer);
 
-        // Text Scroll View
         ScrollView textScroll = new ScrollView(this);
         textScroll.setVerticalScrollBarEnabled(false);
-        textScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        textScroll.setPadding(0, dp(10), 0, 0);
+        textScroll.setFillViewport(true);
+        textScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 0.9f));
 
         LinearLayout textLayout = new LinearLayout(this);
         textLayout.setOrientation(LinearLayout.VERTICAL);
+        textLayout.setPadding(dp(8), dp(2), dp(8), dp(4));
 
         storyContentText = new TextView(this);
-        storyContentText.setTextSize(17);
-        storyContentText.setTextColor(Color.parseColor("#F3F4F6"));
-        storyContentText.setLineSpacing(dp(8), 1.35f);
+        storyContentText.setTextSize(19);
+        storyContentText.setTextColor(CrewTheme.TEXT_PRIMARY);
+        storyContentText.setLineSpacing(dp(7), 1.28f);
         storyContentText.setTypeface(Typeface.create("serif", Typeface.NORMAL));
         textLayout.addView(storyContentText);
 
         dialogueText = new TextView(this);
-        dialogueText.setTextSize(15);
+        dialogueText.setTextSize(16);
         dialogueText.setTextColor(CrewTheme.AMBER_400);
-        dialogueText.setLineSpacing(dp(6), 1.25f);
+        dialogueText.setLineSpacing(dp(5), 1.18f);
         dialogueText.setTypeface(Typeface.create("serif", Typeface.BOLD_ITALIC));
         dialogueText.setPadding(dp(12), dp(10), dp(12), dp(10));
-        GradientDrawable dBg = new GradientDrawable();
-        dBg.setColor(Color.parseColor("#1F2937"));
-        dBg.setCornerRadius(dp(10));
-        dBg.setStroke(dp(1), Color.parseColor("#374151"));
-        dialogueText.setBackground(dBg);
+        dialogueText.setBackground(CrewTheme.createCard(this, Color.parseColor("#1A2232"), Color.parseColor("#374151"), 12));
         LinearLayout.LayoutParams dLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        dLp.setMargins(0, dp(12), 0, dp(6));
+        dLp.setMargins(0, dp(12), 0, 0);
         dialogueText.setLayoutParams(dLp);
         dialogueText.setVisibility(View.GONE);
         textLayout.addView(dialogueText);
@@ -256,144 +188,273 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         pageCard.addView(textScroll);
         root.addView(pageCard);
 
-        // 4. Page Progress Slider
         pageSeekBar = new SeekBar(this);
         pageSeekBar.setMax(Math.max(0, story.pages.size() - 1));
         pageSeekBar.setProgress(0);
-        pageSeekBar.setPadding(dp(8), dp(4), dp(8), dp(10));
+        pageSeekBar.setPadding(dp(10), 0, dp(10), dp(4));
         pageSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (fromUser) {
-                    currentPage = progress;
-                    updatePageDisplay(progress);
-                }
+                if (fromUser) updatePageDisplay(progress);
             }
+
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+
             @Override public void onStopTrackingTouch(SeekBar seekBar) {
-                if (liveClient != null) {
-                    liveClient.jumpToPage(seekBar.getProgress());
-                }
+                int target = seekBar.getProgress();
+                currentPage = target;
+                if (liveClient != null) liveClient.jumpToPage(target);
+                StoryPlaybackService.updateProgress(StoryPlayerActivity.this, target, story.pages.size());
             }
         });
         root.addView(pageSeekBar);
 
-        // 5. Control Buttons (Prev, Play/Pause, Next)
+        root.addView(buildControls());
+        setContentView(root);
+    }
+
+    private View buildHeader() {
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, 0, 0, dp(6));
+
+        TextView backBtn = new TextView(this);
+        backBtn.setText("‹");
+        backBtn.setTextColor(CrewTheme.TEXT_PRIMARY);
+        backBtn.setTextSize(30);
+        backBtn.setGravity(Gravity.CENTER);
+        backBtn.setContentDescription(I18n.t(this, "返回", "Back"));
+        backBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { finish(); }
+        });
+        header.addView(backBtn, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        titleText = new TextView(this);
+        titleText.setText(story.coverEmoji + " " + story.title);
+        titleText.setTextColor(CrewTheme.TEXT_PRIMARY);
+        titleText.setTextSize(15);
+        titleText.setTypeface(Typeface.DEFAULT_BOLD);
+        titleText.setSingleLine(true);
+        titleText.setEllipsize(TextUtils.TruncateAt.END);
+        header.addView(titleText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        pageCounterText = new TextView(this);
+        pageCounterText.setText("1 / " + story.pages.size());
+        pageCounterText.setTextColor(CrewTheme.TEXT_SECONDARY);
+        pageCounterText.setTextSize(12);
+        pageCounterText.setPadding(dp(8), 0, dp(8), 0);
+        header.addView(pageCounterText);
+
+        TextView editBtn = new TextView(this);
+        editBtn.setText("✎");
+        editBtn.setTextColor(CrewTheme.TEXT_SECONDARY);
+        editBtn.setTextSize(24);
+        editBtn.setGravity(Gravity.CENTER);
+        editBtn.setContentDescription(I18n.t(this, "編輯故事", "Edit story"));
+        editBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                pauseForEditing();
+                Intent intent = new Intent(StoryPlayerActivity.this, StoryEditorActivity.class);
+                intent.putExtra("EXTRA_STORY_ID", story.id);
+                startActivity(intent);
+            }
+        });
+        header.addView(editBtn, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        return header;
+    }
+
+    private View buildAmbientStatus() {
+        LinearLayout statusRow = new LinearLayout(this);
+        statusRow.setOrientation(LinearLayout.HORIZONTAL);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow.setPadding(dp(4), 0, dp(4), dp(4));
+
+        statusText = new TextView(this);
+        statusText.setTextSize(11);
+        statusText.setTextColor(CrewTheme.TEXT_MUTED);
+        statusText.setSingleLine(true);
+        statusText.setEllipsize(TextUtils.TruncateAt.END);
+        statusRow.addView(statusText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        emotionBadge = new TextView(this);
+        emotionBadge.setTextSize(10);
+        emotionBadge.setTextColor(CrewTheme.TEXT_SECONDARY);
+        emotionBadge.setPadding(dp(7), dp(3), dp(7), dp(3));
+        emotionBadge.setBackground(CrewTheme.createCard(this, Color.parseColor("#161D2A"), Color.TRANSPARENT, 8));
+        statusRow.addView(emotionBadge);
+
+        return statusRow;
+    }
+
+    private View buildControls() {
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+
+        interactionHintText = new TextView(this);
+        interactionHintText.setText(I18n.t(this, "🎙️ 可以隨時跟波波老師說話", "🎙️ You can talk to the storyteller anytime"));
+        interactionHintText.setTextColor(CrewTheme.TEXT_SECONDARY);
+        interactionHintText.setTextSize(12);
+        interactionHintText.setGravity(Gravity.CENTER);
+        interactionHintText.setPadding(0, 0, 0, dp(8));
+        wrapper.addView(interactionHintText);
+
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
         controls.setGravity(Gravity.CENTER);
 
-        prevBtn = new Button(this);
-        prevBtn.setText(I18n.t(this, "◀ 上一頁", "◀ Prev"));
-        prevBtn.setTextColor(Color.WHITE);
-        prevBtn.setTextSize(13);
-        prevBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1F2937"), CrewTheme.BORDER_DEFAULT, 12));
+        prevBtn = createSideControl(I18n.t(this, "‹ 上一頁", "‹ Prev"));
         prevBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (currentPage > 0) {
-                    currentPage--;
-                    updatePageDisplay(currentPage);
-                    if (liveClient != null) liveClient.jumpToPage(currentPage);
-                }
-            }
+            @Override public void onClick(View v) { movePage(-1); }
         });
-        controls.addView(prevBtn, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        controls.addView(prevBtn, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
         playPauseBtn = new Button(this);
-        playPauseBtn.setText(I18n.t(this, "⏸️ 暫停說書", "⏸️ Pause"));
+        playPauseBtn.setText(I18n.t(this, "⏸ 暫停", "⏸ Pause"));
         playPauseBtn.setTextColor(Color.BLACK);
         playPauseBtn.setTextSize(14);
         playPauseBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable pBg = new GradientDrawable();
-        pBg.setColor(CrewTheme.AMBER_400);
-        pBg.setCornerRadius(dp(14));
-        playPauseBtn.setBackground(pBg);
-        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(0, dp(48), 1.5f);
+        playPauseBtn.setAllCaps(false);
+        playPauseBtn.setBackground(makePrimaryButton(CrewTheme.AMBER_400));
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(0, dp(52), 1.35f);
         pLp.setMargins(dp(10), 0, dp(10), 0);
-        playPauseBtn.setLayoutParams(pLp);
+        controls.addView(playPauseBtn, pLp);
         playPauseBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                handlePlayPauseClick();
-            }
+            @Override public void onClick(View v) { handlePlayPauseClick(); }
         });
-        controls.addView(playPauseBtn);
 
-        nextBtn = new Button(this);
-        nextBtn.setText(I18n.t(this, "下一頁 ▶", "Next ▶"));
-        nextBtn.setTextColor(Color.WHITE);
-        nextBtn.setTextSize(13);
-        nextBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1F2937"), CrewTheme.BORDER_DEFAULT, 12));
+        nextBtn = createSideControl(I18n.t(this, "下一頁 ›", "Next ›"));
         nextBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (currentPage < story.pages.size() - 1) {
-                    currentPage++;
-                    updatePageDisplay(currentPage);
-                    if (liveClient != null) liveClient.jumpToPage(currentPage);
-                }
-            }
+            @Override public void onClick(View v) { movePage(1); }
         });
-        controls.addView(nextBtn, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        controls.addView(nextBtn, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        root.addView(controls);
-        setContentView(root);
+        wrapper.addView(controls);
+        return wrapper;
+    }
+
+    private Button createSideControl(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(CrewTheme.TEXT_PRIMARY);
+        button.setTextSize(12);
+        button.setAllCaps(false);
+        button.setBackground(CrewTheme.createCard(this, Color.parseColor("#171E2B"), CrewTheme.BORDER_DEFAULT, 14));
+        return button;
+    }
+
+    private GradientDrawable makePrimaryButton(int color) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(color);
+        bg.setCornerRadius(dp(16));
+        return bg;
+    }
+
+    private void movePage(int delta) {
+        int target = currentPage + delta;
+        if (target < 0 || target >= story.pages.size()) return;
+        currentPage = target;
+        updatePageDisplay(target);
+        if (liveClient != null) liveClient.jumpToPage(target);
+        StoryPlaybackService.updateProgress(this, target, story.pages.size());
     }
 
     private void updatePageDisplay(int index) {
         if (index < 0 || index >= story.pages.size()) return;
-        this.currentPage = index;
-        StoryModel.Page p = story.pages.get(index);
+        currentPage = index;
+        StoryModel.Page page = story.pages.get(index);
 
         pageCounterText.setText((index + 1) + " / " + story.pages.size());
         pageSeekBar.setProgress(index);
-        storyContentText.setText(p.text);
+        storyContentText.setText(page.text == null ? "" : page.text);
+        emotionBadge.setText(getEmotionIcon(page.emotion) + " " + getEmotionLabel(page.emotion));
 
-        if (p.dialogue != null && !p.dialogue.trim().isEmpty()) {
+        if (page.dialogue != null && !page.dialogue.trim().isEmpty()) {
             dialogueText.setVisibility(View.VISIBLE);
-            dialogueText.setText("💬 " + (p.characterName != null && !p.characterName.isEmpty() ? (p.characterName + "：") : "") + "「" + p.dialogue + "」");
+            String speaker = page.characterName != null && !page.characterName.trim().isEmpty()
+                    ? page.characterName.trim() + "："
+                    : "";
+            dialogueText.setText(speaker + "「" + page.dialogue.trim() + "」");
         } else {
             dialogueText.setVisibility(View.GONE);
         }
 
-        emotionBadge.setText("✨ " + getEmotionLabel(p.emotion));
-
-        // Load illustration if present
-        if (p.imageUri != null && !p.imageUri.isEmpty()) {
-            Bitmap bmp = StoryIllustrationGenerator.loadBitmapSafely(this, p.imageUri);
+        if (page.imageUri != null && !page.imageUri.isEmpty()) {
+            Bitmap bmp = StoryIllustrationGenerator.loadBitmapSafely(this, page.imageUri);
             if (bmp != null) {
                 pageImageView.setImageBitmap(bmp);
                 pageImageView.setVisibility(View.VISIBLE);
                 imagePlaceholder.setVisibility(View.GONE);
+                updateNavEnabledState();
                 return;
             }
         }
 
-        // If no image, show elegant book placeholder
         pageImageView.setImageDrawable(null);
         pageImageView.setVisibility(View.GONE);
         imagePlaceholder.setVisibility(View.VISIBLE);
         placeholderEmoji.setText(story.coverEmoji != null ? story.coverEmoji : "📖");
-        imageActionHint.setText(I18n.t(this, "第 " + (index + 1) + " 頁 · " + story.title, "Page " + (index + 1) + " · " + story.title));
+        imageActionHint.setText(I18n.t(this,
+                "第 " + (index + 1) + " 頁 · 故事正在這裡發生",
+                "Page " + (index + 1) + " · The story is happening here"));
+        updateNavEnabledState();
+    }
+
+    private void updateNavEnabledState() {
+        if (prevBtn != null) {
+            prevBtn.setEnabled(currentPage > 0);
+            prevBtn.setAlpha(currentPage > 0 ? 1f : 0.38f);
+        }
+        if (nextBtn != null) {
+            boolean enabled = currentPage < story.pages.size() - 1;
+            nextBtn.setEnabled(enabled);
+            nextBtn.setAlpha(enabled ? 1f : 0.38f);
+        }
+    }
+
+    private String getEmotionIcon(String emotion) {
+        if ("warm".equalsIgnoreCase(emotion)) return "☀";
+        if ("excited".equalsIgnoreCase(emotion)) return "✨";
+        if ("mysterious".equalsIgnoreCase(emotion)) return "☾";
+        if ("joyful".equalsIgnoreCase(emotion)) return "♫";
+        if ("whisper".equalsIgnoreCase(emotion)) return "☁";
+        if ("scary".equalsIgnoreCase(emotion)) return "◆";
+        if ("tender".equalsIgnoreCase(emotion)) return "♡";
+        return "•";
     }
 
     private String getEmotionLabel(String emotion) {
-        if ("warm".equalsIgnoreCase(emotion)) return I18n.t(this, "溫暖親切", "Warm");
-        if ("excited".equalsIgnoreCase(emotion)) return I18n.t(this, "興奮雀躍", "Excited");
-        if ("mysterious".equalsIgnoreCase(emotion)) return I18n.t(this, "神秘探索", "Mysterious");
-        if ("joyful".equalsIgnoreCase(emotion)) return I18n.t(this, "歡樂生動", "Joyful");
-        if ("whisper".equalsIgnoreCase(emotion)) return I18n.t(this, "輕聲細語", "Whisper");
-        return I18n.t(this, "生動說書", "Storytelling");
+        if ("warm".equalsIgnoreCase(emotion)) return I18n.t(this, "溫暖", "Warm");
+        if ("excited".equalsIgnoreCase(emotion)) return I18n.t(this, "興奮", "Excited");
+        if ("mysterious".equalsIgnoreCase(emotion)) return I18n.t(this, "神秘", "Mysterious");
+        if ("joyful".equalsIgnoreCase(emotion)) return I18n.t(this, "歡樂", "Joyful");
+        if ("whisper".equalsIgnoreCase(emotion)) return I18n.t(this, "輕聲", "Whisper");
+        if ("scary".equalsIgnoreCase(emotion)) return I18n.t(this, "緊張", "Suspense");
+        if ("tender".equalsIgnoreCase(emotion)) return I18n.t(this, "溫柔", "Tender");
+        return I18n.t(this, "說書", "Story" );
     }
 
     private void handlePlayPauseClick() {
-        if (liveClient != null) {
-            if (liveClient.isPaused()) {
-                liveClient.resume();
-                playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "⏸️ 暫停說書", "⏸️ Pause"));
-                ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.AMBER_400);
-            } else {
-                liveClient.pause();
-                playPauseBtn.setText(I18n.t(StoryPlayerActivity.this, "▶️ 繼續播放", "▶️ Resume"));
-                ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.EMERALD_400);
-            }
+        if (liveClient == null) return;
+
+        if (uiState.mode == StoryPlayerUiState.Mode.FINISHED) {
+            restartStorySession(0);
+            return;
+        }
+
+        if (liveClient.isPaused()) {
+            liveClient.resume();
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY));
+        } else {
+            liveClient.pause();
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.PAUSED));
+        }
+    }
+
+    private void pauseForEditing() {
+        if (liveClient != null && !liveClient.isPaused()) {
+            liveClient.pause();
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.PAUSED));
         }
     }
 
@@ -407,31 +468,83 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         liveClient = new StoryLiveClient(this, story, startPage, this);
         liveClient.start();
         StoryPlaybackService.start(this, story, startPage);
-        playPauseBtn.setText(I18n.t(this, "⏸️ 暫停說書", "⏸️ Pause"));
-        ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.AMBER_400);
-        playPauseBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                handlePlayPauseClick();
-            }
-        });
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.CONNECTING));
+    }
+
+    private void setUiState(StoryPlayerUiState state) {
+        uiState = state;
+        if (statusText == null || playPauseBtn == null || interactionHintText == null) return;
+
+        int statusColor = CrewTheme.TEXT_MUTED;
+        String status = "";
+        String playText = I18n.t(this, "⏸ 暫停", "⏸ Pause");
+        int playColor = CrewTheme.AMBER_400;
+        String interaction = I18n.t(this, "🎙️ 可以隨時跟波波老師說話", "🎙️ You can talk to the storyteller anytime");
+
+        switch (state.mode) {
+            case CONNECTING:
+                status = I18n.t(this, "正在準備說書人…", "Preparing storyteller…");
+                break;
+            case READY:
+                status = I18n.t(this, "已就緒", "Ready");
+                statusColor = CrewTheme.EMERALD_400;
+                break;
+            case NARRATING:
+                status = I18n.t(this, "波波老師正在說故事", "Storyteller is narrating");
+                statusColor = CrewTheme.SKY_400;
+                interaction = I18n.t(this, "🎙️ 想問問題？直接說話就可以", "🎙️ Have a question? Just speak");
+                break;
+            case LISTENING:
+                status = I18n.t(this, "正在聽你說…", "Listening to you…");
+                statusColor = CrewTheme.PURPLE_400;
+                interaction = I18n.t(this, "正在聽你說話…", "Listening…");
+                break;
+            case PAUSED:
+                status = I18n.t(this, "故事已暫停", "Story paused");
+                playText = I18n.t(this, "▶ 繼續", "▶ Resume");
+                playColor = CrewTheme.EMERALD_400;
+                break;
+            case ERROR:
+                status = TextUtils.isEmpty(state.detail)
+                        ? I18n.t(this, "連線出了問題", "Connection problem")
+                        : state.detail;
+                statusColor = CrewTheme.ROSE_500;
+                playText = I18n.t(this, "▶ 再試一次", "▶ Try again");
+                playColor = CrewTheme.EMERALD_400;
+                break;
+            case FINISHED:
+                status = I18n.t(this, "故事說完了 ✨", "Story complete ✨");
+                statusColor = CrewTheme.AMBER_400;
+                playText = I18n.t(this, "↻ 再聽一次", "↻ Replay");
+                playColor = CrewTheme.EMERALD_400;
+                interaction = I18n.t(this, "喜歡這個故事嗎？可以再聽一次", "Enjoyed it? Listen again anytime");
+                break;
+            case DISCONNECTED:
+                status = I18n.t(this, "連線已中斷", "Disconnected");
+                statusColor = CrewTheme.TEXT_SECONDARY;
+                break;
+        }
+
+        statusText.setText(status);
+        statusText.setTextColor(statusColor);
+        playPauseBtn.setText(playText);
+        playPauseBtn.setBackground(makePrimaryButton(playColor));
+        interactionHintText.setText(interaction);
     }
 
     @Override
     public void onConnected() {
-        statusBadge.setText(I18n.t(this, "● 說書人已就緒", "● Storyteller Ready"));
-        statusBadge.setTextColor(CrewTheme.EMERALD_400);
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY));
     }
 
     @Override
     public void onDisconnected(String reason) {
-        statusBadge.setText(I18n.t(this, "● 連線已中斷", "● Disconnected"));
-        statusBadge.setTextColor(CrewTheme.TEXT_MUTED);
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.DISCONNECTED, reason));
     }
 
     @Override
     public void onError(String error) {
-        statusBadge.setText(I18n.t(this, "● 錯誤: ", "● Error: ") + error);
-        statusBadge.setTextColor(CrewTheme.ROSE_500);
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.ERROR, error));
         Toast.makeText(this, error, Toast.LENGTH_LONG).show();
     }
 
@@ -443,40 +556,33 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
     @Override
     public void onStoryFinished() {
-        statusBadge.setText(I18n.t(this, "🎉 故事全篇圓滿結束！", "🎉 Story Completed!"));
-        statusBadge.setTextColor(CrewTheme.AMBER_400);
-        playPauseBtn.setText(I18n.t(this, "🔄 重新聆聽", "🔄 Replay"));
-        ((GradientDrawable) playPauseBtn.getBackground()).setColor(CrewTheme.EMERALD_400);
-        playPauseBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                restartStorySession(0);
-            }
-        });
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.FINISHED));
         StoryPlaybackService.stop(this);
     }
 
     @Override
     public void onAiSpeechStarted() {
-        statusBadge.setText(I18n.t(this, "🎙️ 說書人正在朗讀...", "🎙️ Narrating..."));
-        statusBadge.setTextColor(CrewTheme.SKY_400);
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.NARRATING));
     }
 
     @Override
     public void onAiSpeechEnded() {
-        if (liveClient != null && !liveClient.isPaused()) {
-            statusBadge.setText(I18n.t(this, "● 翻頁準備中...", "● Preparing Next Page..."));
-            statusBadge.setTextColor(CrewTheme.EMERALD_400);
+        if (liveClient != null && !liveClient.isPaused() && uiState.mode != StoryPlayerUiState.Mode.FINISHED) {
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY));
         }
     }
 
     @Override
     public void onUserInterrupted() {
-        // Intentionally silent or status update
+        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.LISTENING));
     }
 
     @Override
     public void onStatusUpdate(String status) {
-        statusBadge.setText("● " + status);
+        // Keep internal Gemini status subtle. Errors have their own callback and stay prominent.
+        if (uiState.mode == StoryPlayerUiState.Mode.CONNECTING && !TextUtils.isEmpty(status)) {
+            statusText.setText(status);
+        }
     }
 
     @Override
