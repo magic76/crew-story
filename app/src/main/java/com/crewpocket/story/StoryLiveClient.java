@@ -55,6 +55,9 @@ public class StoryLiveClient {
         void onAiSpeechEnded();
         void onUserInterrupted();
         void onStatusUpdate(String status);
+        void onChildSpeechTranscript(String transcript);
+        void onTeacherAnswerText(String answerText, boolean isComplete);
+        void onInteractionCompleted(StoryInteractionItem item);
     }
 
     private final Context context;
@@ -72,6 +75,9 @@ public class StoryLiveClient {
     // Manual child-turn state.
     private volatile boolean userTurnActive = false;
     private volatile boolean awaitingUserResponse = false;
+    private final StringBuilder currentChildTranscript = new StringBuilder();
+    private final StringBuilder currentTeacherAnswer = new StringBuilder();
+    private int currentInteractionPage = 0;
 
     private WebSocket webSocket;
     private OkHttpClient httpClient;
@@ -229,6 +235,9 @@ public class StoryLiveClient {
         flushAudio();
         userTurnActive = true;
         awaitingUserResponse = true;
+        currentInteractionPage = currentPageIndex;
+        currentChildTranscript.setLength(0);
+        currentTeacherAnswer.setLength(0);
 
         if (!sendRealtimeSignal("activityStart")) {
             userTurnActive = false;
@@ -372,10 +381,33 @@ public class StoryLiveClient {
                     server.optBoolean("is_interrupted", false)
             );
 
-            if (interrupted) {
-                // Gemini acknowledged an explicit activityStart interruption.
-                // Do not treat the interrupted narration as a completed child response.
-                flushAudio();
+            // 1004: Parse child speech transcript from userTurn or inputAudioTranscription
+            JSONObject userTurn = server.optJSONObject("userTurn");
+            if (userTurn == null) userTurn = server.optJSONObject("user_turn");
+            if (userTurn != null) {
+                JSONArray uParts = userTurn.optJSONArray("parts");
+                if (uParts != null) {
+                    for (int i = 0; i < uParts.length(); i++) {
+                        JSONObject uPart = uParts.optJSONObject(i);
+                        if (uPart != null) {
+                            String uText = uPart.optString("text", "");
+                            if (!uText.isEmpty()) {
+                                currentChildTranscript.append(uText);
+                                notifyChildSpeechTranscript(currentChildTranscript.toString());
+                            }
+                        }
+                    }
+                }
+            }
+
+            JSONObject inTrans = server.optJSONObject("inputAudioTranscription");
+            if (inTrans == null) inTrans = response.optJSONObject("inputAudioTranscription");
+            if (inTrans != null) {
+                String inText = inTrans.optString("text", inTrans.optString("transcript", ""));
+                if (!inText.isEmpty()) {
+                    currentChildTranscript.append(inText);
+                    notifyChildSpeechTranscript(currentChildTranscript.toString());
+                }
             }
 
             JSONObject turn = server.optJSONObject("modelTurn");
@@ -386,6 +418,14 @@ public class StoryLiveClient {
                 if (parts != null) {
                     for (int i = 0; i < parts.length(); i++) {
                         JSONObject part = parts.getJSONObject(i);
+
+                        // 1004: Parse teacher answer text when answering child
+                        String textPart = part.optString("text", "");
+                        if (!textPart.isEmpty() && awaitingUserResponse) {
+                            currentTeacherAnswer.append(textPart);
+                            notifyTeacherAnswerText(currentTeacherAnswer.toString(), false);
+                        }
+
                         JSONObject inline = part.optJSONObject("inlineData");
                         if (inline == null) inline = part.optJSONObject("inline_data");
 
@@ -450,6 +490,18 @@ public class StoryLiveClient {
         if (!awaitingUserResponse) return;
 
         awaitingUserResponse = false;
+        notifyTeacherAnswerText(currentTeacherAnswer.toString(), true);
+
+        StoryInteractionItem item = new StoryInteractionItem(
+                currentInteractionPage,
+                currentChildTranscript.toString().trim(),
+                currentTeacherAnswer.toString().trim()
+        );
+        notifyInteractionCompleted(item);
+
+        currentChildTranscript.setLength(0);
+        currentTeacherAnswer.setLength(0);
+
         notifyStatus("回到故事…");
         sendResumeAfterConversationDirective();
     }
@@ -950,6 +1002,33 @@ public class StoryLiveClient {
             @Override
             public void run() {
                 if (listener != null) listener.onStatusUpdate(status);
+            }
+        });
+    }
+
+    private void notifyChildSpeechTranscript(final String transcript) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (listener != null) listener.onChildSpeechTranscript(transcript);
+            }
+        });
+    }
+
+    private void notifyTeacherAnswerText(final String answerText, final boolean isComplete) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (listener != null) listener.onTeacherAnswerText(answerText, isComplete);
+            }
+        });
+    }
+
+    private void notifyInteractionCompleted(final StoryInteractionItem item) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (listener != null) listener.onInteractionCompleted(item);
             }
         });
     }

@@ -1,6 +1,7 @@
 package com.crewpocket.story;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -21,6 +22,9 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Immersive story reader.
  *
@@ -39,6 +43,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
     private TextView titleText;
     private TextView pageCounterText;
+    private TextView historyBtn;
     private TextView statusText;
     private TextView interactionHintText;
     private TextView storyContentText;
@@ -54,6 +59,12 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     private Button nextBtn;
     private Button talkBtn;
     private TextView emotionBadge;
+
+    private LinearLayout liveInteractionCard;
+    private TextView childTranscriptText;
+    private TextView teacherAnswerText;
+
+    private final List<StoryInteractionItem> interactionHistory = new ArrayList<>();
 
     private StoryPlayerUiState uiState = StoryPlayerUiState.of(StoryPlayerUiState.Mode.CONNECTING);
 
@@ -182,8 +193,33 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         LinearLayout.LayoutParams dLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         dLp.setMargins(0, dp(12), 0, 0);
         dialogueText.setLayoutParams(dLp);
-        dialogueText.setVisibility(View.GONE);
         textLayout.addView(dialogueText);
+
+        // 1004: Live Child-Teacher Q&A card
+        liveInteractionCard = new LinearLayout(this);
+        liveInteractionCard.setOrientation(LinearLayout.VERTICAL);
+        liveInteractionCard.setPadding(dp(12), dp(10), dp(12), dp(10));
+        liveInteractionCard.setBackground(CrewTheme.createCard(this, Color.parseColor("#172033"), CrewTheme.SKY_400, 14));
+        LinearLayout.LayoutParams licLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        licLp.setMargins(0, dp(12), 0, 0);
+        liveInteractionCard.setLayoutParams(licLp);
+        liveInteractionCard.setVisibility(View.GONE);
+
+        childTranscriptText = new TextView(this);
+        childTranscriptText.setTextSize(14);
+        childTranscriptText.setTextColor(CrewTheme.SKY_400);
+        childTranscriptText.setTypeface(Typeface.DEFAULT_BOLD);
+        childTranscriptText.setLineSpacing(dp(3), 1.15f);
+        liveInteractionCard.addView(childTranscriptText);
+
+        teacherAnswerText = new TextView(this);
+        teacherAnswerText.setTextSize(14);
+        teacherAnswerText.setTextColor(CrewTheme.AMBER_400);
+        teacherAnswerText.setLineSpacing(dp(4), 1.2f);
+        teacherAnswerText.setPadding(0, dp(6), 0, 0);
+        liveInteractionCard.addView(teacherAnswerText);
+
+        textLayout.addView(liveInteractionCard);
 
         textScroll.addView(textLayout);
         pageCard.addView(textScroll);
@@ -243,8 +279,24 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         pageCounterText.setText("1 / " + story.pages.size());
         pageCounterText.setTextColor(CrewTheme.TEXT_SECONDARY);
         pageCounterText.setTextSize(12);
-        pageCounterText.setPadding(dp(8), 0, dp(8), 0);
+        pageCounterText.setPadding(dp(8), 0, dp(6), 0);
         header.addView(pageCounterText);
+
+        historyBtn = new TextView(this);
+        historyBtn.setText(I18n.t(this, "💬 0", "💬 0"));
+        historyBtn.setTextColor(CrewTheme.TEXT_MUTED);
+        historyBtn.setTextSize(11);
+        historyBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        historyBtn.setGravity(Gravity.CENTER);
+        historyBtn.setPadding(dp(8), dp(4), dp(8), dp(4));
+        historyBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#161D2A"), CrewTheme.BORDER_DEFAULT, 8));
+        historyBtn.setContentDescription(I18n.t(this, "共讀問答紀錄", "Q&A History"));
+        historyBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showInteractionHistoryDialog(); }
+        });
+        LinearLayout.LayoutParams hbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
+        hbLp.setMargins(0, 0, dp(6), 0);
+        header.addView(historyBtn, hbLp);
 
         TextView editBtn = new TextView(this);
         editBtn.setText("✎");
@@ -416,6 +468,11 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
             dialogueText.setText(speaker + "「" + page.dialogue.trim() + "」");
         } else {
             dialogueText.setVisibility(View.GONE);
+        }
+
+        updateHistoryButton();
+        if (liveClient != null && !liveClient.isUserSpeaking() && !liveClient.isAwaitingUserResponse()) {
+            if (liveInteractionCard != null) liveInteractionCard.setVisibility(View.GONE);
         }
 
         if (page.imageUri != null && !page.imageUri.isEmpty()) {
@@ -641,6 +698,15 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
             talkBtn.setText(I18n.t(this, "⏹️ 說完了", "⏹️ Done speaking"));
             talkBtn.setEnabled(true);
         }
+        if (liveInteractionCard != null) {
+            liveInteractionCard.setVisibility(View.VISIBLE);
+            if (childTranscriptText != null) {
+                childTranscriptText.setText(I18n.t(this, "👦 小朋友正在說話…", "👦 Child is speaking…"));
+            }
+            if (teacherAnswerText != null) {
+                teacherAnswerText.setText("");
+            }
+        }
     }
 
     @Override
@@ -651,6 +717,130 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         if (uiState.mode == StoryPlayerUiState.Mode.CONNECTING && !TextUtils.isEmpty(status)) {
             statusText.setText(status);
         }
+    }
+
+    @Override
+    public void onChildSpeechTranscript(String transcript) {
+        if (liveInteractionCard != null && childTranscriptText != null) {
+            liveInteractionCard.setVisibility(View.VISIBLE);
+            childTranscriptText.setText(I18n.t(this, "👦 小朋友：「" + transcript + "」", "👦 Child: \"" + transcript + "\""));
+        }
+    }
+
+    @Override
+    public void onTeacherAnswerText(String answerText, boolean isComplete) {
+        if (liveInteractionCard != null && teacherAnswerText != null) {
+            liveInteractionCard.setVisibility(View.VISIBLE);
+            teacherAnswerText.setText(I18n.t(this, "🐻 波波老師：「" + answerText + "」", "🐻 Teacher: \"" + answerText + "\""));
+        }
+    }
+
+    @Override
+    public void onInteractionCompleted(StoryInteractionItem item) {
+        if (item != null) {
+            interactionHistory.add(item);
+            updateHistoryButton();
+        }
+    }
+
+    private void updateHistoryButton() {
+        if (historyBtn == null) return;
+        int count = interactionHistory.size();
+        historyBtn.setText(I18n.t(this, "💬 互動 (" + count + ")", "💬 Q&A (" + count + ")"));
+        if (count > 0) {
+            historyBtn.setTextColor(CrewTheme.AMBER_400);
+            historyBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.AMBER_400, 8));
+        } else {
+            historyBtn.setTextColor(CrewTheme.TEXT_MUTED);
+            historyBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#161D2A"), CrewTheme.BORDER_DEFAULT, 8));
+        }
+    }
+
+    private void showInteractionHistoryDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(20), dp(18), dp(20), dp(18));
+        layout.setBackgroundColor(CrewTheme.BG_SURFACE);
+
+        TextView title = new TextView(this);
+        title.setText(I18n.t(this, "💬 當次共讀互動紀錄", "💬 Reading Session Q&A"));
+        title.setTextColor(CrewTheme.AMBER_400);
+        title.setTextSize(17);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        layout.addView(title);
+
+        TextView sub = new TextView(this);
+        sub.setText(I18n.t(this,
+                "《" + story.title + "》共讀期間小聽眾與波波老師的問答交流：",
+                "Questions and answers between the child and storyteller:"));
+        sub.setTextColor(CrewTheme.TEXT_MUTED);
+        sub.setTextSize(12);
+        sub.setPadding(0, dp(4), 0, dp(12));
+        layout.addView(sub);
+
+        if (interactionHistory.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText(I18n.t(this,
+                    "💡 目前還沒有互動問答紀錄。\n\n在聽故事時按下「🎤 我要說話」向波波老師提問，問答紀錄就會自動收錄在這裡喔！",
+                    "💡 No Q&A records yet.\n\nTap '🎤 I want to talk' during the story to ask questions!"));
+            empty.setTextColor(CrewTheme.TEXT_SECONDARY);
+            empty.setTextSize(13);
+            empty.setPadding(dp(8), dp(12), dp(8), dp(16));
+            layout.addView(empty);
+        } else {
+            ScrollView scroll = new ScrollView(this);
+            scroll.setVerticalScrollBarEnabled(false);
+            LinearLayout list = new LinearLayout(this);
+            list.setOrientation(LinearLayout.VERTICAL);
+
+            for (int i = 0; i < interactionHistory.size(); i++) {
+                StoryInteractionItem item = interactionHistory.get(i);
+                LinearLayout itemCard = new LinearLayout(this);
+                itemCard.setOrientation(LinearLayout.VERTICAL);
+                itemCard.setPadding(dp(12), dp(10), dp(12), dp(10));
+                itemCard.setBackground(CrewTheme.createCard(this, Color.parseColor("#0F172A"), CrewTheme.BORDER_DEFAULT, 12));
+                LinearLayout.LayoutParams icLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                icLp.setMargins(0, 0, 0, dp(10));
+                itemCard.setLayoutParams(icLp);
+
+                TextView tag = new TextView(this);
+                tag.setText(I18n.t(this, "📍 第 " + (item.pageIndex + 1) + " 頁", "📍 Page " + (item.pageIndex + 1)));
+                tag.setTextColor(CrewTheme.SKY_400);
+                tag.setTextSize(11);
+                tag.setTypeface(Typeface.DEFAULT_BOLD);
+                itemCard.addView(tag);
+
+                String childMsg = item.childTranscript.isEmpty()
+                        ? I18n.t(this, "（語音提問）", "(Voice Question)")
+                        : item.childTranscript;
+                TextView child = new TextView(this);
+                child.setText("👦 小朋友：" + childMsg);
+                child.setTextColor(Color.WHITE);
+                child.setTextSize(13);
+                child.setTypeface(Typeface.DEFAULT_BOLD);
+                child.setPadding(0, dp(4), 0, dp(4));
+                itemCard.addView(child);
+
+                String teacherMsg = item.teacherAnswer.isEmpty()
+                        ? I18n.t(this, "（語音溫馨回答）", "(Warm voice answer)")
+                        : item.teacherAnswer;
+                TextView teacher = new TextView(this);
+                teacher.setText("🐻 波波老師：" + teacherMsg);
+                teacher.setTextColor(CrewTheme.AMBER_400);
+                teacher.setTextSize(13);
+                teacher.setLineSpacing(dp(3), 1.15f);
+                itemCard.addView(teacher);
+
+                list.addView(itemCard);
+            }
+            scroll.addView(list);
+            layout.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260)));
+        }
+
+        builder.setView(layout);
+        builder.setPositiveButton(I18n.t(this, "關閉", "Close"), null);
+        builder.show();
     }
 
     @Override
