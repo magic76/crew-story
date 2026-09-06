@@ -277,221 +277,47 @@ public class MainActivity extends Activity {
 
     // ── Tab 0: Story Shelf ──
     private void renderStoryShelfTab() {
-        // Banner card
-        LinearLayout banner = new LinearLayout(this);
-        banner.setOrientation(LinearLayout.VERTICAL);
-        banner.setPadding(dp(16), dp(14), dp(16), dp(14));
-        banner.setBackground(CrewTheme.createCard(this, CrewTheme.BG_SURFACE, CrewTheme.BORDER_GOLD, 16));
-        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bLp.setMargins(0, 0, 0, dp(12));
-        banner.setLayoutParams(bLp);
+        // 1003: The shelf is now a child-first surface. Language selection and
+        // technical options stay in Settings instead of competing with books.
+        StoryShelfView shelf = new StoryShelfView(
+                this,
+                new StoryShelfView.Listener() {
+                    @Override
+                    public void onPlayStory(StoryModel story) {
+                        Intent intent = new Intent(
+                                MainActivity.this,
+                                StoryPlayerActivity.class
+                        );
+                        intent.putExtra("EXTRA_STORY_ID", story.id);
+                        startActivity(intent);
+                    }
 
-        TextView bTitle = new TextView(this);
-        bTitle.setText(I18n.t(this, "🌟 歡迎來到 Crew Story 說書房", "🌟 Welcome to Crew Story"));
-        bTitle.setTextColor(CrewTheme.AMBER_400);
-        bTitle.setTextSize(15);
-        bTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        banner.addView(bTitle);
+                    @Override
+                    public void onEditStory(StoryModel story) {
+                        Intent intent = new Intent(
+                                MainActivity.this,
+                                StoryEditorActivity.class
+                        );
+                        intent.putExtra("EXTRA_STORY_ID", story.id);
+                        startActivity(intent);
+                    }
 
-        TextView bDesc = new TextView(this);
-        bDesc.setText(I18n.t(this,
-                "挑選一本繪本，由 Gemini 雙向語音說書人生動朗讀！音訊完整朗讀完才會自動翻頁，隨時暫停或插圖更換。",
-                "Pick a picture book for Gemini to read aloud! Pages flip synchronously with audio narration."));
-        bDesc.setTextColor(CrewTheme.TEXT_SECONDARY);
-        bDesc.setTextSize(12);
-        bDesc.setPadding(0, dp(4), 0, 0);
-        banner.addView(bDesc);
-        pageContent.addView(banner);
+                    @Override
+                    public void onDeleteStory(StoryModel story) {
+                        StoryRepository.deleteStory(
+                                MainActivity.this,
+                                story.id
+                        );
+                        renderCurrentPage();
+                    }
 
-        // ── Storyteller Language Selector Row ──
-        LinearLayout langSection = new LinearLayout(this);
-        langSection.setOrientation(LinearLayout.VERTICAL);
-        langSection.setPadding(0, 0, 0, dp(12));
-
-        TextView langHeader = new TextView(this);
-        langHeader.setText(I18n.t(this, "🎙️ 說書人語言 (Storyteller Language)：", "🎙️ Storyteller Language:"));
-        langHeader.setTextColor(CrewTheme.TEXT_SECONDARY);
-        langHeader.setTextSize(12);
-        langHeader.setTypeface(Typeface.DEFAULT_BOLD);
-        langHeader.setPadding(0, 0, 0, dp(6));
-        langSection.addView(langHeader);
-
-        HorizontalScrollView langScroll = new HorizontalScrollView(this);
-        langScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout langRow = new LinearLayout(this);
-        langRow.setOrientation(LinearLayout.HORIZONTAL);
-
-        String currentStoryLang = AppConfig.getStoryLanguage(this);
-        for (final String lCode : AppConfig.SUPPORTED_STORY_LANGS) {
-            final boolean isSelected = lCode.equalsIgnoreCase(currentStoryLang);
-            Button chip = new Button(this);
-            chip.setText(AppConfig.getStoryLanguageDisplayName(lCode));
-            chip.setTextSize(11);
-            chip.setTextColor(isSelected ? CrewTheme.AMBER_400 : Color.WHITE);
-            chip.setTypeface(isSelected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-            chip.setBackground(CrewTheme.createCard(this, Color.parseColor(isSelected ? "#1E293B" : "#0F172A"), isSelected ? CrewTheme.BORDER_GOLD : CrewTheme.BORDER_DEFAULT, 12));
-            chip.setPadding(dp(12), dp(4), dp(12), dp(4));
-            chip.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    AppConfig.setStoryLanguage(MainActivity.this, lCode);
-                    Toast.makeText(MainActivity.this,
-                            I18n.t(MainActivity.this, "說書語言已設為：" + AppConfig.getStoryLanguageDisplayName(lCode), "Language set to: " + AppConfig.getStoryLanguageDisplayName(lCode)),
-                            Toast.LENGTH_SHORT).show();
-                    renderCurrentPage();
+                    @Override
+                    public void onCreateStory() {
+                        showCreateStoryDialog();
+                    }
                 }
-            });
-
-            LinearLayout.LayoutParams cpLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
-            cpLp.setMargins(0, 0, dp(8), 0);
-            langRow.addView(chip, cpLp);
-        }
-        langScroll.addView(langRow);
-        langSection.addView(langScroll);
-        pageContent.addView(langSection);
-
-        // Story List Header
-        TextView listHeader = new TextView(this);
-        listHeader.setText(I18n.t(this, "📖 我的故事繪本書庫", "📖 My Picture Books"));
-        listHeader.setTextColor(Color.WHITE);
-        listHeader.setTextSize(14);
-        listHeader.setTypeface(Typeface.DEFAULT_BOLD);
-        listHeader.setPadding(0, dp(4), 0, dp(8));
-        pageContent.addView(listHeader);
-
-        List<StoryModel> stories = StoryRepository.getStories(this);
-        for (final StoryModel s : stories) {
-            LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setPadding(dp(14), dp(14), dp(14), dp(12));
-            card.setBackground(CrewTheme.createCard(this, CrewTheme.BG_SURFACE, CrewTheme.BORDER_DEFAULT, 14));
-            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            cLp.setMargins(0, 0, 0, dp(12));
-            card.setLayoutParams(cLp);
-
-            // Top row: Emoji + Title + Summary
-            LinearLayout topRow = new LinearLayout(this);
-            topRow.setOrientation(LinearLayout.HORIZONTAL);
-            topRow.setGravity(Gravity.TOP);
-
-            TextView emoji = new TextView(this);
-            emoji.setText(s.coverEmoji);
-            emoji.setTextSize(32);
-            emoji.setPadding(0, 0, dp(12), 0);
-            topRow.addView(emoji);
-
-            LinearLayout info = new LinearLayout(this);
-            info.setOrientation(LinearLayout.VERTICAL);
-
-            TextView title = new TextView(this);
-            title.setText(s.title);
-            title.setTextColor(Color.WHITE);
-            title.setTextSize(15);
-            title.setTypeface(Typeface.DEFAULT_BOLD);
-            info.addView(title);
-
-            TextView summary = new TextView(this);
-            summary.setText(s.summary);
-            summary.setTextColor(CrewTheme.TEXT_MUTED);
-            summary.setTextSize(12);
-            summary.setMaxLines(2);
-            summary.setEllipsize(TextUtils.TruncateAt.END);
-            summary.setPadding(0, dp(2), 0, 0);
-            info.addView(summary);
-
-            topRow.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            card.addView(topRow);
-
-            // Bottom action row: Page count + Edit & Play buttons
-            LinearLayout actionRow = new LinearLayout(this);
-            actionRow.setOrientation(LinearLayout.HORIZONTAL);
-            actionRow.setGravity(Gravity.CENTER_VERTICAL);
-            actionRow.setPadding(0, dp(10), 0, 0);
-
-            TextView pages = new TextView(this);
-            pages.setText(I18n.t(this, "共 " + s.pages.size() + " 頁", s.pages.size() + " Pages"));
-            pages.setTextColor(CrewTheme.SKY_400);
-            pages.setTextSize(12);
-            pages.setTypeface(Typeface.DEFAULT_BOLD);
-            actionRow.addView(pages, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-            Button editBtn = new Button(this);
-            editBtn.setText(I18n.t(this, "✏️ 編輯", "✏️ Edit"));
-            editBtn.setTextSize(11);
-            editBtn.setTextColor(Color.WHITE);
-            editBtn.setPadding(dp(12), dp(4), dp(12), dp(4));
-            editBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#1E293B"), CrewTheme.BORDER_DEFAULT, 8));
-            editBtn.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    Intent intent = new Intent(MainActivity.this, StoryEditorActivity.class);
-                    intent.putExtra("EXTRA_STORY_ID", s.id);
-                    startActivity(intent);
-                }
-            });
-            LinearLayout.LayoutParams ebLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
-            ebLp.setMargins(0, 0, dp(8), 0);
-            actionRow.addView(editBtn, ebLp);
-
-            Button playBtn = new Button(this);
-            playBtn.setText(I18n.t(this, "▶️ 播放", "▶️ Play"));
-            playBtn.setTextSize(11);
-            playBtn.setTextColor(Color.BLACK);
-            playBtn.setTypeface(Typeface.DEFAULT_BOLD);
-            playBtn.setPadding(dp(12), dp(4), dp(12), dp(4));
-            GradientDrawable pbBg = new GradientDrawable();
-            pbBg.setColor(CrewTheme.AMBER_400);
-            pbBg.setCornerRadius(dp(8));
-            playBtn.setBackground(pbBg);
-            playBtn.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    Intent intent = new Intent(MainActivity.this, StoryPlayerActivity.class);
-                    intent.putExtra("EXTRA_STORY_ID", s.id);
-                    startActivity(intent);
-                }
-            });
-            actionRow.addView(playBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)));
-
-            card.addView(actionRow);
-
-            card.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    Intent intent = new Intent(MainActivity.this, StoryPlayerActivity.class);
-                    intent.putExtra("EXTRA_STORY_ID", s.id);
-                    startActivity(intent);
-                }
-            });
-
-            card.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override public boolean onLongClick(View v) {
-                    String[] options = {
-                            I18n.t(MainActivity.this, "▶️ 開始朗讀", "▶️ Start Listening"),
-                            I18n.t(MainActivity.this, "✏️ 編輯繪本", "✏️ Edit Story"),
-                            I18n.t(MainActivity.this, "🗑️ 刪除故事", "🗑️ Delete Story")
-                    };
-                    new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("《" + s.title + "》")
-                            .setItems(options, new DialogInterface.OnClickListener() {
-                                @Override public void onClick(DialogInterface dialog, int which) {
-                                    if (which == 0) {
-                                        Intent intent = new Intent(MainActivity.this, StoryPlayerActivity.class);
-                                        intent.putExtra("EXTRA_STORY_ID", s.id);
-                                        startActivity(intent);
-                                    } else if (which == 1) {
-                                        Intent intent = new Intent(MainActivity.this, StoryEditorActivity.class);
-                                        intent.putExtra("EXTRA_STORY_ID", s.id);
-                                        startActivity(intent);
-                                    } else if (which == 2) {
-                                        StoryRepository.deleteStory(MainActivity.this, s.id);
-                                        renderCurrentPage();
-                                    }
-                                }
-                            })
-                            .show();
-                    return true;
-                }
-            });
-
-            pageContent.addView(card);
-        }
+        );
+        pageContent.addView(shelf);
     }
 
     // ── Tab 1: Settings ──
@@ -640,6 +466,49 @@ public class MainActivity extends Activity {
         }
         popScroll.addView(popRow);
         card.addView(popScroll);
+
+        // ── Storyteller Language Selector Row ──
+        TextView langTitle = new TextView(this);
+        langTitle.setText(I18n.t(this, "🌐 說書人語言 (Storyteller Language)：", "🌐 Storyteller Language:"));
+        langTitle.setTextColor(Color.WHITE);
+        langTitle.setTextSize(14);
+        langTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        langTitle.setPadding(0, dp(18), 0, dp(8));
+        card.addView(langTitle);
+
+        HorizontalScrollView langScroll = new HorizontalScrollView(this);
+        langScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout langRow = new LinearLayout(this);
+        langRow.setOrientation(LinearLayout.HORIZONTAL);
+        langRow.setPadding(0, dp(2), 0, dp(2));
+
+        String currentStoryLang = AppConfig.getStoryLanguage(this);
+        for (int i = 0; i < AppConfig.SUPPORTED_STORY_LANGS.length; i++) {
+            final String lCode = AppConfig.SUPPORTED_STORY_LANGS[i];
+            final boolean isSelected = lCode.equalsIgnoreCase(currentStoryLang);
+            Button chip = new Button(this);
+            chip.setText(AppConfig.getStoryLanguageDisplayName(lCode));
+            chip.setTextSize(11);
+            chip.setTextColor(isSelected ? CrewTheme.AMBER_400 : Color.WHITE);
+            chip.setTypeface(isSelected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            chip.setBackground(CrewTheme.createCard(this, Color.parseColor(isSelected ? "#1E293B" : "#0F172A"), isSelected ? CrewTheme.BORDER_GOLD : CrewTheme.BORDER_DEFAULT, 12));
+            chip.setPadding(dp(12), dp(4), dp(12), dp(4));
+            chip.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    AppConfig.setStoryLanguage(MainActivity.this, lCode);
+                    Toast.makeText(MainActivity.this,
+                            I18n.t(MainActivity.this, "說書語言已設為：" + AppConfig.getStoryLanguageDisplayName(lCode), "Language set to: " + AppConfig.getStoryLanguageDisplayName(lCode)),
+                            Toast.LENGTH_SHORT).show();
+                    renderCurrentPage();
+                }
+            });
+
+            LinearLayout.LayoutParams cpLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+            if (i > 0) cpLp.setMargins(dp(6), 0, 0, 0);
+            langRow.addView(chip, cpLp);
+        }
+        langScroll.addView(langRow);
+        card.addView(langScroll);
 
         pageContent.addView(card);
     }
