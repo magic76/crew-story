@@ -1,91 +1,42 @@
 package com.crewpocket.story;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
-
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 public class StoryModel implements Serializable {
-    public String id;
-    public String title;
-    public String summary;
-    public String coverEmoji;
-    public String coverImageUri;
+    public static final String SOURCE_BUILT_IN="built_in", SOURCE_USER="user";
+    public String id,title,summary,coverEmoji,coverImageUri;
     public long createdAt;
-    public List<Page> pages = new ArrayList<>();
+    public String sourceType=SOURCE_USER,ageGroup="",copyrightNote="";
+    public int estimatedMinutes=0;
+    public final List<String> tags=new ArrayList<>();
+    public List<Page> pages=new ArrayList<>();
+    public boolean isBuiltIn(){return SOURCE_BUILT_IN.equals(sourceType);}
 
     public static class Page implements Serializable {
-        public int pageIndex; // 0-based
-        public String imageUri; // Local image URI or base64 or empty
-        public String text;     // Narrator / story text for this page
-        public String emotion;  // e.g. "warm", "excited", "mysterious", "whisper"
-        public String characterName; // Optional character speaking
-        public String dialogue; // Direct spoken dialogue
-
-        public JSONObject toJson() {
-            JSONObject obj = new JSONObject();
-            try {
-                obj.put("pageIndex", pageIndex);
-                obj.put("imageUri", imageUri != null ? imageUri : "");
-                obj.put("text", text != null ? text : "");
-                obj.put("emotion", emotion != null ? emotion : "normal");
-                obj.put("characterName", characterName != null ? characterName : "");
-                obj.put("dialogue", dialogue != null ? dialogue : "");
-            } catch (Exception ignored) {}
-            return obj;
-        }
-
-        public static Page fromJson(JSONObject obj) {
-            Page p = new Page();
-            p.pageIndex = obj.optInt("pageIndex", 0);
-            p.imageUri = obj.optString("imageUri", "");
-            p.text = obj.optString("text", "");
-            p.emotion = obj.optString("emotion", "normal");
-            p.characterName = obj.optString("characterName", "");
-            p.dialogue = obj.optString("dialogue", "");
-            return p;
-        }
+        public int pageIndex; public String imageUri,text,emotion,characterName,dialogue;
+        public StoryContext context=new StoryContext();
+        public JSONObject toJson(){JSONObject o=new JSONObject();try{
+            o.put("pageIndex",pageIndex);o.put("imageUri",imageUri!=null?imageUri:"");o.put("text",text!=null?text:"");
+            o.put("emotion",emotion!=null?emotion:"normal");o.put("characterName",characterName!=null?characterName:"");
+            o.put("dialogue",dialogue!=null?dialogue:"");o.put("context",context!=null?context.toJson():new JSONObject());
+        }catch(Exception ignored){}return o;}
+        public static Page fromJson(JSONObject o){Page p=new Page();p.pageIndex=o.optInt("pageIndex",0);p.imageUri=o.optString("imageUri","");
+            p.text=o.optString("text","");p.emotion=o.optString("emotion","normal");p.characterName=o.optString("characterName","");
+            p.dialogue=o.optString("dialogue","");p.context=StoryContext.fromJson(o.optJSONObject("context"));return p;}
     }
-
-    public JSONObject toJson() {
-        JSONObject obj = new JSONObject();
-        try {
-            obj.put("id", id);
-            obj.put("title", title);
-            obj.put("summary", summary);
-            obj.put("coverEmoji", coverEmoji != null ? coverEmoji : "📖");
-            obj.put("coverImageUri", coverImageUri != null ? coverImageUri : "");
-            obj.put("createdAt", createdAt);
-
-            JSONArray pArray = new JSONArray();
-            for (Page p : pages) {
-                pArray.put(p.toJson());
-            }
-            obj.put("pages", pArray);
-        } catch (Exception ignored) {}
-        return obj;
-    }
-
-    public static StoryModel fromJson(JSONObject obj) {
-        StoryModel s = new StoryModel();
-        s.id = obj.optString("id", String.valueOf(System.currentTimeMillis()));
-        s.title = obj.optString("title", "未命名故事");
-        s.summary = obj.optString("summary", "");
-        s.coverEmoji = obj.optString("coverEmoji", "📖");
-        s.coverImageUri = obj.optString("coverImageUri", "");
-        s.createdAt = obj.optLong("createdAt", System.currentTimeMillis());
-
-        JSONArray pArray = obj.optJSONArray("pages");
-        if (pArray != null) {
-            for (int i = 0; i < pArray.length(); i++) {
-                JSONObject po = pArray.optJSONObject(i);
-                if (po != null) {
-                    s.pages.add(Page.fromJson(po));
-                }
-            }
-        }
-        return s;
-    }
+    public JSONObject toJson(){JSONObject o=new JSONObject();try{
+        o.put("id",id);o.put("title",title);o.put("summary",summary);o.put("coverEmoji",coverEmoji!=null?coverEmoji:"📖");
+        o.put("coverImageUri",coverImageUri!=null?coverImageUri:"");o.put("createdAt",createdAt);o.put("sourceType",sourceType);
+        o.put("ageGroup",ageGroup);o.put("estimatedMinutes",estimatedMinutes);o.put("tags",new JSONArray(tags));o.put("copyrightNote",copyrightNote);
+        JSONArray a=new JSONArray();for(Page p:pages)a.put(p.toJson());o.put("pages",a);
+    }catch(Exception ignored){}return o;}
+    public static StoryModel fromJson(JSONObject o){StoryModel s=new StoryModel();s.id=o.optString("id",String.valueOf(System.currentTimeMillis()));
+        s.title=o.optString("title","未命名故事");s.summary=o.optString("summary","");s.coverEmoji=o.optString("coverEmoji","📖");
+        s.coverImageUri=o.optString("coverImageUri","");s.createdAt=o.optLong("createdAt",System.currentTimeMillis());
+        s.sourceType=o.optString("sourceType",SOURCE_USER);s.ageGroup=o.optString("ageGroup","");s.estimatedMinutes=o.optInt("estimatedMinutes",0);
+        s.copyrightNote=o.optString("copyrightNote","");JSONArray t=o.optJSONArray("tags");if(t!=null)for(int i=0;i<t.length();i++)s.tags.add(t.optString(i));
+        JSONArray a=o.optJSONArray("pages");if(a!=null)for(int i=0;i<a.length();i++){JSONObject p=a.optJSONObject(i);if(p!=null)s.pages.add(Page.fromJson(p));}return s;}
 }

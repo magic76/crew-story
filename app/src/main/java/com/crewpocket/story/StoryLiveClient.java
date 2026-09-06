@@ -546,6 +546,7 @@ public class StoryLiveClient {
                     .append(story.title).append("》第 ")
                     .append(currentPageIndex + 1).append(" 頁：\n");
             appendPageContent(sb, page);
+            appendStoryContext(sb, page);
 
             sendClientTextTurn(sb.toString());
             notifyPageAdvanced(currentPageIndex, page.text);
@@ -573,11 +574,20 @@ public class StoryLiveClient {
                     .append("不要重新從整頁開頭朗讀，也不要再次回答剛才的問題。\n")
                     .append("目前頁面內容供你銜接：\n");
             appendPageContent(sb, page);
+            appendStoryContext(sb, page);
 
             sendClientTextTurn(sb.toString());
         } catch (Exception e) {
             Log.e(TAG, "Failed to resume narration after child answer", e);
         }
+    }
+
+    private void appendStoryContext(StringBuilder sb, StoryModel.Page page) {
+        if (page == null || page.context == null) return;
+        sb.append("\n【Story Context Engine · 僅供理解，不要朗讀】\n");
+        sb.append(page.context.toPromptBlock());
+        sb.append("回答孩子時，只能把目前頁面與先前已揭露內容視為孩子已知資訊。");
+        sb.append("除非孩子明確要求劇透，否則不可透露後續頁面的事件、角色真相或結局。\n");
     }
 
     private void appendPageContent(StringBuilder sb, StoryModel.Page page) {
