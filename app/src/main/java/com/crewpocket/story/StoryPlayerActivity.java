@@ -52,6 +52,7 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     private Button playPauseBtn;
     private Button prevBtn;
     private Button nextBtn;
+    private Button talkBtn;
     private TextView emotionBadge;
 
     private StoryPlayerUiState uiState = StoryPlayerUiState.of(StoryPlayerUiState.Mode.CONNECTING);
@@ -291,12 +292,27 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         LinearLayout wrapper = new LinearLayout(this);
         wrapper.setOrientation(LinearLayout.VERTICAL);
 
+        // Push-to-Talk Button (Manual Interruption / Child Speaking Turn)
+        talkBtn = new Button(this);
+        talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+        talkBtn.setTextColor(Color.WHITE);
+        talkBtn.setTextSize(14);
+        talkBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        talkBtn.setEnabled(false); // Enabled when connected
+        talkBtn.setBackground(CrewTheme.createCard(this, Color.parseColor("#2563EB"), Color.parseColor("#60A5FA"), 14));
+        talkBtn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { handleTalkButtonClick(); }
+        });
+        LinearLayout.LayoutParams talkLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        talkLp.setMargins(0, 0, 0, dp(8));
+        wrapper.addView(talkBtn, talkLp);
+
         interactionHintText = new TextView(this);
-        interactionHintText.setText(I18n.t(this, "🎙️ 可以隨時跟波波老師說話", "🎙️ You can talk to the storyteller anytime"));
+        interactionHintText.setText(I18n.t(this, "🎙️ 想問問題？點上方「我要說話」即可插話", "🎙️ Want to ask a question? Tap 'I want to talk'"));
         interactionHintText.setTextColor(CrewTheme.TEXT_SECONDARY);
-        interactionHintText.setTextSize(12);
+        interactionHintText.setTextSize(11);
         interactionHintText.setGravity(Gravity.CENTER);
-        interactionHintText.setPadding(0, 0, 0, dp(8));
+        interactionHintText.setPadding(0, 0, 0, dp(6));
         wrapper.addView(interactionHintText);
 
         LinearLayout controls = new LinearLayout(this);
@@ -331,6 +347,29 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
 
         wrapper.addView(controls);
         return wrapper;
+    }
+
+    private void handleTalkButtonClick() {
+        if (liveClient == null || talkBtn == null) return;
+
+        if (liveClient.isUserSpeaking()) {
+            // Second tap: Explicit end of the child's turn
+            if (liveClient.endUserTurn()) {
+                talkBtn.setText(I18n.t(this, "⏳ 波波老師回答中…", "⏳ Teacher is answering…"));
+                talkBtn.setEnabled(false);
+                setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY, "Thinking..."));
+            }
+            return;
+        }
+
+        if (liveClient.isAwaitingUserResponse()) return;
+
+        // First tap: Intentionally interrupt narration and open the mic
+        if (liveClient.beginUserTurn()) {
+            talkBtn.setText(I18n.t(this, "⏹️ 說完了", "⏹️ Done speaking"));
+            talkBtn.setEnabled(true);
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.LISTENING));
+        }
     }
 
     private Button createSideControl(String text) {
@@ -535,16 +574,22 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     @Override
     public void onConnected() {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY));
+        if (talkBtn != null) talkBtn.setEnabled(true);
     }
 
     @Override
     public void onDisconnected(String reason) {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.DISCONNECTED, reason));
+        if (talkBtn != null) talkBtn.setEnabled(false);
     }
 
     @Override
     public void onError(String error) {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.ERROR, error));
+        if (talkBtn != null) {
+            talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+            talkBtn.setEnabled(liveClient != null && !liveClient.isPaused() && !liveClient.isAwaitingUserResponse());
+        }
         Toast.makeText(this, error, Toast.LENGTH_LONG).show();
     }
 
@@ -558,11 +603,24 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
     public void onStoryFinished() {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.FINISHED));
         StoryPlaybackService.stop(this);
+        if (talkBtn != null) talkBtn.setEnabled(false);
     }
 
     @Override
     public void onAiSpeechStarted() {
-        setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.NARRATING));
+        if (liveClient != null && liveClient.isAwaitingUserResponse()) {
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY, I18n.t(this, "波波老師正在回答你…", "Teacher is answering…")));
+            if (talkBtn != null) {
+                talkBtn.setText(I18n.t(this, "⏳ 波波老師回答中…", "⏳ Teacher is answering…"));
+                talkBtn.setEnabled(false);
+            }
+        } else {
+            setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.NARRATING));
+            if (talkBtn != null && !liveClient.isPaused() && !liveClient.isUserSpeaking() && !liveClient.isAwaitingUserResponse()) {
+                talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+                talkBtn.setEnabled(true);
+            }
+        }
     }
 
     @Override
@@ -570,16 +628,26 @@ public class StoryPlayerActivity extends Activity implements StoryLiveClient.Lis
         if (liveClient != null && !liveClient.isPaused() && uiState.mode != StoryPlayerUiState.Mode.FINISHED) {
             setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.READY));
         }
+        if (talkBtn != null && liveClient != null && !liveClient.isPaused() && !liveClient.isUserSpeaking() && !liveClient.isAwaitingUserResponse()) {
+            talkBtn.setText(I18n.t(this, "🎤 我要說話", "🎤 I want to talk"));
+            talkBtn.setEnabled(true);
+        }
     }
 
     @Override
     public void onUserInterrupted() {
         setUiState(StoryPlayerUiState.of(StoryPlayerUiState.Mode.LISTENING));
+        if (talkBtn != null) {
+            talkBtn.setText(I18n.t(this, "⏹️ 說完了", "⏹️ Done speaking"));
+            talkBtn.setEnabled(true);
+        }
     }
 
     @Override
     public void onStatusUpdate(String status) {
-        // Keep internal Gemini status subtle. Errors have their own callback and stay prominent.
+        if (liveClient != null && (liveClient.isUserSpeaking() || liveClient.isAwaitingUserResponse())) {
+            return;
+        }
         if (uiState.mode == StoryPlayerUiState.Mode.CONNECTING && !TextUtils.isEmpty(status)) {
             statusText.setText(status);
         }
